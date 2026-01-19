@@ -1,0 +1,74 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cwa-cli",
+    "crates/cwa-core",
+    "crates/cwa-db",
+    "crates/cwa-mcp",
+    "crates/cwa-web",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["CWA Team"]
+license = "MIT"
+repository = "https://github.com/yourorg/cwa"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.43", features = ["full"] }
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+colored = "2.1"
+indicatif = "0.17"
+dialoguer = "0.11"
+
+# Web framework
+axum = { version = "0.8", features = ["ws", "macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+
+# MCP - using simplified JSON-RPC implementation
+# rmcp = { version = "0.1", features = ["server", "transport-io"] }
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite_migration = "1.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+schemars = "0.8"
+toml = "0.8"
+
+# Markdown & Templates
+pulldown-cmark = "0.12"
+tera = "1.20"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging/tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Internal crates
+cwa-core = { path = "crates/cwa-core" }
+cwa-db = { path = "crates/cwa-db" }
+cwa-mcp = { path = "crates/cwa-mcp" }
+cwa-web = { path = "crates/cwa-web" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
