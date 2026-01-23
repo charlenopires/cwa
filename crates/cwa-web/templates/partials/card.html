@@ -1,0 +1,52 @@
+<div class="bg-white rounded-md shadow-sm border border-gray-200 p-3 cursor-move hover:shadow-md transition-shadow group {% match card.priority %}{% when Some with (p) %}priority-{{ p.as_str() }}{% when None %}{% endmatch %}"
+     data-card-id="{{ card.id }}">
+    <!-- Priority badge -->
+    {% match card.priority %}
+    {% when Some with (priority) %}
+    <div class="mb-1.5">
+        <span class="text-xs font-medium uppercase">{{ priority.as_str() }}</span>
+    </div>
+    {% when None %}
+    {% endmatch %}
+
+    <!-- Title -->
+    <h4 class="text-sm font-medium text-gray-900 mb-1">{{ card.title }}</h4>
+
+    <!-- Description preview -->
+    {% match card.description %}
+    {% when Some with (desc) %}
+    {% if !desc.is_empty() %}
+    <p class="text-xs text-gray-500 line-clamp-2 mb-2">{{ desc }}</p>
+    {% endif %}
+    {% when None %}
+    {% endmatch %}
+
+    <!-- Labels -->
+    {% if !card.labels.is_empty() %}
+    <div class="flex flex-wrap gap-1 mb-2">
+        {% for label in card.labels %}
+        <span class="text-xs px-1.5 py-0.5 rounded" style="background-color: {{ label.color }}20; color: {{ label.color }}">
+            {{ label.name }}
+        </span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Footer -->
+    <div class="flex items-center justify-between">
+        {% match card.due_date %}
+        {% when Some with (due) %}
+        <span class="text-xs text-gray-400">{{ due }}</span>
+        {% when None %}
+        <span></span>
+        {% endmatch %}
+
+        <button class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs transition-opacity"
+                hx-delete="/cards/{{ card.id }}"
+                hx-target="#board-columns"
+                hx-swap="innerHTML"
+                hx-confirm="Delete this card?">
+            &times;
+        </button>
+    </div>
+</div>

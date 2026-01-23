@@ -12,6 +12,10 @@ path = "src/main.rs"
 [dependencies]
 cwa-core = { workspace = true }
 cwa-db = { workspace = true }
+cwa-graph = { workspace = true }
+cwa-embedding = { workspace = true }
+cwa-codegen = { workspace = true }
+cwa-token = { workspace = true }
 cwa-mcp = { workspace = true }
 cwa-web = { workspace = true }
 clap = { workspace = true }
@@ -23,3 +27,4 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 serde_json = { workspace = true }
+reqwest = { workspace = true }

@@ -5,14 +5,18 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 pub mod analyze;
+pub mod codegen;
 pub mod context;
 pub mod domain;
+pub mod graph;
+pub mod infra;
 pub mod init;
 pub mod memory;
 pub mod mcp;
 pub mod serve;
 pub mod spec;
 pub mod task;
+pub mod tokens;
 
 /// Claude Workflow Architect - Development Workflow Orchestration
 #[derive(Parser)]
@@ -67,6 +71,22 @@ pub enum Commands {
     /// MCP server commands
     #[command(subcommand)]
     Mcp(mcp::McpCommands),
+
+    /// Knowledge Graph commands
+    #[command(subcommand)]
+    Graph(graph::GraphCommands),
+
+    /// Code generation commands
+    #[command(subcommand)]
+    Codegen(codegen::CodegenCommands),
+
+    /// Token analysis commands
+    #[command(subcommand)]
+    Tokens(tokens::TokenCommands),
+
+    /// Docker infrastructure management
+    #[command(subcommand)]
+    Infra(infra::InfraCommands),
 }
 
 impl Cli {
@@ -85,6 +105,10 @@ impl Cli {
             Commands::Analyze(cmd) => analyze::execute(cmd, &project_dir).await,
             Commands::Serve(args) => serve::execute(args, &project_dir).await,
             Commands::Mcp(cmd) => mcp::execute(cmd, &project_dir).await,
+            Commands::Graph(cmd) => graph::execute(cmd, &project_dir).await,
+            Commands::Codegen(cmd) => codegen::execute(cmd, &project_dir).await,
+            Commands::Tokens(cmd) => tokens::execute(cmd, &project_dir).await,
+            Commands::Infra(cmd) => infra::execute(cmd, &project_dir).await,
         }
     }
 }

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CWA Kanban{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+    <style>
+        .sortable-ghost { opacity: 0.4; }
+        .sortable-chosen { box-shadow: 0 10px 25px -5px rgba(0,0,0,0.2); }
+        .priority-low { color: #6b7280; border-left: 3px solid #6b7280; }
+        .priority-medium { color: #3b82f6; border-left: 3px solid #3b82f6; }
+        .priority-high { color: #f59e0b; border-left: 3px solid #f59e0b; }
+        .priority-critical { color: #ef4444; border-left: 3px solid #ef4444; }
+        .wip-exceeded { background-color: #fef2f2 !important; border-color: #fca5a5 !important; }
+        .htmx-indicator { display: none; }
+        .htmx-request .htmx-indicator { display: inline-block; }
+    </style>
+</head>
+<body class="h-full bg-gray-100">
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-14 items-center">
+                <div class="flex items-center gap-4">
+                    <a href="/" class="text-lg font-bold text-gray-900">CWA</a>
+                    <span class="text-gray-400">|</span>
+                    <a href="/boards" class="text-sm text-gray-600 hover:text-gray-900">Boards</a>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="htmx-indicator text-sm text-gray-500">Syncing...</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="h-[calc(100vh-3.5rem)]">
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

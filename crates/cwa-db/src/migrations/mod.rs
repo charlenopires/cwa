@@ -3,13 +3,12 @@
 use crate::pool::{DbPool, DbResult, DbError};
 use rusqlite_migration::{Migrations, M};
 
-/// SQL schema definition.
-const SCHEMA: &str = include_str!("schema.sql");
-
 /// Run all database migrations.
 pub fn run_migrations(pool: &DbPool) -> DbResult<()> {
     let migrations = Migrations::new(vec![
-        M::up(SCHEMA),
+        M::up(include_str!("001_initial.sql")),
+        M::up(include_str!("002_boards_cards.sql")),
+        M::up(include_str!("003_memories_sync.sql")),
     ]);
 
     pool.with_conn_mut(|conn| {

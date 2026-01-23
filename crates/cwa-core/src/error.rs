@@ -20,6 +20,15 @@ pub enum CwaError {
     #[error("Decision not found: {0}")]
     DecisionNotFound(String),
 
+    #[error("Board not found: {0}")]
+    BoardNotFound(String),
+
+    #[error("Card not found: {0}")]
+    CardNotFound(String),
+
+    #[error("Column not found: {0}")]
+    ColumnNotFound(String),
+
     #[error("Invalid state transition: cannot move from '{from}' to '{to}'")]
     InvalidStateTransition { from: String, to: String },
 

@@ -3,6 +3,7 @@
 //! Domain models and business logic for the Claude Workflow Architect.
 
 pub mod analysis;
+pub mod board;
 pub mod decision;
 pub mod domain;
 pub mod error;

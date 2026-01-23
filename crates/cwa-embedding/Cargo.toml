@@ -1,18 +1,22 @@
 [package]
-name = "cwa-mcp"
+name = "cwa-embedding"
+description = "Vector embeddings and semantic search for CWA"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+rust-version.workspace = true
 
 [dependencies]
-cwa-core = { workspace = true }
 cwa-db = { workspace = true }
-cwa-graph = { workspace = true }
-cwa-embedding = { workspace = true }
+qdrant-client = { workspace = true }
+rusqlite = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }

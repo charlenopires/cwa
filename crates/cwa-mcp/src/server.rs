@@ -236,6 +236,88 @@ fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
                 "required": ["query"]
             }),
         },
+        // Graph tools
+        Tool {
+            name: "cwa_graph_query".to_string(),
+            description: "Execute a Cypher query against the Knowledge Graph".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "cypher": {
+                        "type": "string",
+                        "description": "Cypher query to execute"
+                    }
+                },
+                "required": ["cypher"]
+            }),
+        },
+        Tool {
+            name: "cwa_graph_impact".to_string(),
+            description: "Analyze the impact of changes to an entity in the Knowledge Graph".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "entity_type": {
+                        "type": "string",
+                        "description": "Entity type (spec, task, context, decision)"
+                    },
+                    "entity_id": {
+                        "type": "string",
+                        "description": "Entity ID"
+                    }
+                },
+                "required": ["entity_type", "entity_id"]
+            }),
+        },
+        Tool {
+            name: "cwa_graph_sync".to_string(),
+            description: "Sync SQLite entities to Neo4j Knowledge Graph".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        },
+        // Embedding tools
+        Tool {
+            name: "cwa_memory_semantic_search".to_string(),
+            description: "Search memories using vector similarity (semantic search)".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Natural language search query"
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Number of results (default: 5)"
+                    }
+                },
+                "required": ["query"]
+            }),
+        },
+        Tool {
+            name: "cwa_memory_add".to_string(),
+            description: "Store a memory with vector embedding for future semantic search".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "Memory content to store"
+                    },
+                    "entry_type": {
+                        "type": "string",
+                        "description": "Type: preference, decision, fact, pattern"
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Optional context for the memory"
+                    }
+                },
+                "required": ["content", "entry_type"]
+            }),
+        },
     ];
 
     Ok(serde_json::json!({ "tools": tools }))
@@ -393,6 +475,139 @@ async fn handle_tool_call(
                 })?;
 
             serde_json::to_value(&results).unwrap()
+        }
+
+        // Graph tools
+        "cwa_graph_query" => {
+            let cypher = args["cypher"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing cypher".to_string(),
+            })?;
+
+            let client = cwa_graph::GraphClient::connect_default().await
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: format!("Neo4j connection failed: {}", e),
+                })?;
+
+            let results = cwa_graph::queries::search::raw_query(&client, cypher).await
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({ "results": results })
+        }
+
+        "cwa_graph_impact" => {
+            let entity_type = args["entity_type"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing entity_type".to_string(),
+            })?;
+            let entity_id = args["entity_id"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing entity_id".to_string(),
+            })?;
+
+            let client = cwa_graph::GraphClient::connect_default().await
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: format!("Neo4j connection failed: {}", e),
+                })?;
+
+            let nodes = cwa_graph::queries::impact::impact_analysis(&client, entity_type, entity_id, 3).await
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({ "impacts": nodes })
+        }
+
+        "cwa_graph_sync" => {
+            let client = cwa_graph::GraphClient::connect_default().await
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: format!("Neo4j connection failed: {}", e),
+                })?;
+
+            cwa_graph::schema::initialize_schema(&client).await
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            let result = cwa_graph::run_full_sync(&client, pool, &project.id).await
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({
+                "success": true,
+                "nodes_created": result.nodes_created,
+                "nodes_updated": result.nodes_updated,
+                "relationships_created": result.relationships_created
+            })
+        }
+
+        // Embedding tools
+        "cwa_memory_semantic_search" => {
+            let query = args["query"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing query".to_string(),
+            })?;
+            let top_k = args.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5);
+
+            let search = cwa_embedding::SemanticSearch::default_search()
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: format!("Search initialization failed: {}", e),
+                })?;
+
+            let results = search.search_project(query, &project.id, top_k).await
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({ "results": results })
+        }
+
+        "cwa_memory_add" => {
+            let content = args["content"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing content".to_string(),
+            })?;
+            let entry_type_str = args["entry_type"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing entry_type".to_string(),
+            })?;
+            let context = args.get("context").and_then(|v| v.as_str());
+
+            let entry_type = cwa_embedding::MemoryType::from_str(entry_type_str)
+                .map_err(|e| JsonRpcError {
+                    code: -32602,
+                    message: e.to_string(),
+                })?;
+
+            let pipeline = cwa_embedding::MemoryPipeline::default_pipeline()
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: format!("Pipeline initialization failed: {}", e),
+                })?;
+
+            let result = pipeline.add_memory(pool, &project.id, content, entry_type, context).await
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({
+                "success": true,
+                "id": result.id,
+                "embedding_dim": result.embedding_dim
+            })
         }
 
         _ => {

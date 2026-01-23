@@ -7,7 +7,7 @@ pub mod state;
 pub mod websocket;
 
 use axum::{
-    routing::{get, post, put},
+    routing::{delete, get, patch, post, put},
     Router,
 };
 use cwa_db::DbPool;
@@ -48,8 +48,19 @@ pub fn create_router(state: AppState) -> Router {
         .route("/context/summary", get(routes::context::get_summary))
         .with_state(state.clone());
 
+    // HTMX-driven HTML routes for Kanban board
+    let board_routes = Router::new()
+        .route("/", get(routes::board_html::index))
+        .route("/boards", get(routes::board_html::list_boards))
+        .route("/boards/{id}", get(routes::board_html::get_board))
+        .route("/cards", post(routes::board_html::create_card))
+        .route("/cards/{id}/move", patch(routes::board_html::move_card))
+        .route("/cards/{id}", delete(routes::board_html::delete_card))
+        .with_state(state.clone());
+
     Router::new()
         .nest("/api", api_routes)
+        .merge(board_routes)
         .route("/ws", get(websocket::ws_handler))
         .fallback_service(ServeDir::new("assets/web").append_index_html_on_directories(true))
         .layer(TraceLayer::new_for_http())
