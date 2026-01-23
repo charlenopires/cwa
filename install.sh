@@ -21,6 +21,23 @@ echo "Rust version: $(rustc --version)"
 echo "Cargo version: $(cargo --version)"
 echo ""
 
+# Check optional dependencies
+echo "Checking optional dependencies..."
+
+if command -v docker &> /dev/null; then
+    echo "  Docker:  $(docker --version | head -1)"
+else
+    echo "  Docker:  not installed (optional - needed for 'cwa infra' commands)"
+fi
+
+if command -v docker compose version &> /dev/null 2>&1 || command -v docker-compose &> /dev/null 2>&1; then
+    echo "  Compose: available"
+else
+    echo "  Compose: not available (optional - needed for 'cwa infra' commands)"
+fi
+
+echo ""
+
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -34,7 +51,9 @@ if [ ! -f "target/release/$BINARY_NAME" ]; then
     exit 1
 fi
 
-echo "Build successful!"
+# Show binary size
+BINARY_SIZE=$(du -h "target/release/$BINARY_NAME" | cut -f1)
+echo "Build successful! (binary size: $BINARY_SIZE)"
 echo ""
 
 # Install binary
@@ -57,9 +76,13 @@ echo ""
 echo "CWA installed to: $INSTALL_DIR/$BINARY_NAME"
 echo "Version: $($INSTALL_DIR/$BINARY_NAME --version 2>/dev/null || echo 'unknown')"
 echo ""
-echo "Usage:"
-echo "  cwa init <project-name>    # Initialize a new project"
-echo "  cwa --help                 # Show all commands"
+echo "Quick start:"
+echo "  cwa init my-project          # Initialize a new project"
+echo "  cwa --help                   # Show all commands"
+echo ""
+echo "Optional infrastructure (requires Docker):"
+echo "  cwa infra up                 # Start Neo4j, Qdrant, Ollama"
+echo "  cwa infra status             # Check service health"
 echo ""
 
 # Verify installation
