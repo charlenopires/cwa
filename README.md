@@ -161,6 +161,7 @@ This creates:
 - `.claude/` — Agents, skills, commands, rules, and hooks
 - `CLAUDE.md` — Project context file
 - `.cwa/cwa.db` — SQLite database
+- `.cwa/docker/` — Docker Compose infrastructure (Neo4j, Qdrant, Ollama)
 
 ### 2. Open in Claude Code
 
@@ -1027,13 +1028,15 @@ Tasks follow a strict workflow with WIP limits:
 
 ## Docker Services
 
+`cwa init` creates a complete Docker infrastructure in `.cwa/docker/`:
+
 | Service | Image | Ports | Purpose |
 |---------|-------|-------|---------|
 | Neo4j | `neo4j:5.26-community` | 7474 (HTTP), 7687 (Bolt) | Knowledge Graph |
 | Qdrant | `qdrant/qdrant:v1.13.2` | 6333 (HTTP), 6334 (gRPC) | Vector Store |
 | Ollama | `ollama/ollama:0.5.4` | 11434 | Embeddings (nomic-embed-text, 768 dims) |
 
-Default credentials (configurable via `docker/.env`):
+Default credentials (configurable via `.cwa/docker/.env`):
 - Neo4j: `neo4j` / `cwa_dev_2026`
 
 ## Project Structure
@@ -1044,7 +1047,13 @@ When you run `cwa init`, the following structure is created:
 my-project/
 ├── .cwa/
 │   ├── cwa.db                    # SQLite database
-│   └── constitution.md           # Project values & constraints
+│   ├── constitution.md           # Project values & constraints
+│   └── docker/                   # Docker infrastructure
+│       ├── docker-compose.yml    # Neo4j, Qdrant, Ollama services
+│       ├── .env.example          # Environment template
+│       └── scripts/
+│           ├── init-qdrant.sh    # Qdrant collection setup
+│           └── init-neo4j.cypher # Neo4j constraints/indexes
 ├── .claude/
 │   ├── agents/                   # Agent definitions (8 agents)
 │   │   ├── analyst.md            # Requirements research
