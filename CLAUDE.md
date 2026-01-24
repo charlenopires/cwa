@@ -142,7 +142,7 @@ cwa task clear [<spec>] [--confirm]       # Delete tasks (all or by spec)
 
 # Domain Modeling (DDD)
 cwa domain discover                      # Interactive domain discovery
-cwa domain context new <name>            # Create bounded context
+cwa domain context new <name> [--description <d>]  # Create bounded context
 cwa domain context list                  # List contexts
 cwa domain context map                   # Show context relationships
 cwa domain glossary                      # Display domain glossary

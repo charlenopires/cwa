@@ -422,7 +422,7 @@ $ cwa task clear abc123 --confirm
 
 ```bash
 cwa domain discover                    # Interactive domain discovery
-cwa domain context new <name>          # Create bounded context
+cwa domain context new <name> [--description <d>]  # Create bounded context
 cwa domain context list                # List contexts
 cwa domain context map                 # Show context relationships
 cwa domain glossary                    # Display domain glossary
