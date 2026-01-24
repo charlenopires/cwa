@@ -8,3 +8,4 @@ pub mod domains;
 pub mod decisions;
 pub mod design_systems;
 pub mod memory;
+pub mod observations;

@@ -61,6 +61,8 @@ SQLite database at `.cwa/cwa.db` with tables:
 - `card_history` - Card movement audit trail
 - `sync_state` - Neo4j sync tracking
 - `design_systems` - Design tokens extracted from UI screenshots
+- `observations` - Structured development observations with confidence lifecycle
+- `summaries` - Compressed session/time-range observation summaries
 
 ## CLI Commands
 
@@ -97,8 +99,16 @@ cwa memory add "<content>" -t <type>     # Add memory with embedding
 cwa memory search "<query>" [--top-k N]  # Semantic search
 cwa memory import                        # Import legacy entries
 cwa memory compact [--min-confidence N]  # Remove low-confidence entries
+cwa memory compact --decay 0.98          # Decay all observation confidences
 cwa memory sync                          # Sync CLAUDE.md
 cwa memory export [--output <file>]      # Export as JSON
+
+# Observations (Structured Memory)
+cwa memory observe "<title>" -t <type>   # Record observation (bugfix/feature/refactor/discovery/decision/change/insight)
+cwa memory observe "<title>" -t discovery -f "fact1" -f "fact2"  # With facts
+cwa memory observe "<title>" -n "narrative" --files-modified src/foo.rs  # With context
+cwa memory timeline [--days N] [--limit N]  # View recent observations timeline
+cwa memory summarize [--count N]         # Generate summary from recent observations
 
 # Design System
 cwa design from-image <url>              # Extract design system from screenshot (requires ANTHROPIC_API_KEY)
@@ -158,6 +168,10 @@ cwa mcp stdio                            # Run MCP server
 | `cwa_graph_sync` | Trigger SQLite -> Neo4j sync |
 | `cwa_memory_semantic_search` | Vector similarity search |
 | `cwa_memory_add` | Store memory with embedding |
+| `cwa_observe` | Record structured observation (bugfix/feature/discovery/etc) |
+| `cwa_memory_timeline` | Compact timeline of observations (~50 tokens/entry) |
+| `cwa_memory_get` | Full observation details by IDs (~500 tokens/entry) |
+| `cwa_memory_search_all` | Search across memories + observations |
 
 ### Resources
 - `project://constitution` - Project values/constraints

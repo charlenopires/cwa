@@ -136,6 +136,36 @@ pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClau
         content.push_str("All UI implementation must follow the design system tokens defined above.\n\n");
     }
 
+    // Recent Observations (high-confidence, top 10)
+    let high_conf_observations = cwa_db::queries::observations::list_high_confidence(db, project_id, 0.7, 10)
+        .unwrap_or_default();
+
+    if !high_conf_observations.is_empty() {
+        content.push_str("## Recent Observations\n\n");
+        for obs in &high_conf_observations {
+            let narrative_suffix = obs.narrative.as_deref()
+                .map(|n| format!(" -- {}", n))
+                .unwrap_or_default();
+            content.push_str(&format!(
+                "- **[{}]** {}{}\n",
+                obs.obs_type.to_uppercase(),
+                obs.title,
+                narrative_suffix
+            ));
+        }
+        content.push('\n');
+    }
+
+    // Last Session Summary
+    let summaries = cwa_db::queries::observations::get_recent_summaries(db, project_id, 1)
+        .unwrap_or_default();
+
+    if let Some(summary) = summaries.first() {
+        content.push_str("## Last Session Summary\n\n");
+        content.push_str(&summary.content);
+        content.push_str("\n\n");
+    }
+
     Ok(GeneratedClaudeMd { content })
 }
 

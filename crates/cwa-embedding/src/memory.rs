@@ -19,6 +19,7 @@ pub enum MemoryType {
     Fact,
     Pattern,
     DesignSystem,
+    Observation,
 }
 
 impl MemoryType {
@@ -29,6 +30,7 @@ impl MemoryType {
             Self::Fact => "fact",
             Self::Pattern => "pattern",
             Self::DesignSystem => "design_system",
+            Self::Observation => "observation",
         }
     }
 
@@ -39,7 +41,8 @@ impl MemoryType {
             "fact" => Ok(Self::Fact),
             "pattern" => Ok(Self::Pattern),
             "design_system" => Ok(Self::DesignSystem),
-            _ => anyhow::bail!("Invalid memory type: '{}'. Use: preference, decision, fact, pattern, design_system", s),
+            "observation" => Ok(Self::Observation),
+            _ => anyhow::bail!("Invalid memory type: '{}'. Use: preference, decision, fact, pattern, design_system, observation", s),
         }
     }
 }

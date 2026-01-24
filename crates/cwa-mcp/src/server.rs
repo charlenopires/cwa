@@ -336,6 +336,94 @@ fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
                 "required": ["content", "entry_type"]
             }),
         },
+        // Observation tools (progressive disclosure)
+        Tool {
+            name: "cwa_observe".to_string(),
+            description: "Record a structured observation about development activity. Use this to capture bugfixes, features, discoveries, decisions, changes, and insights.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Brief title of the observation"
+                    },
+                    "obs_type": {
+                        "type": "string",
+                        "description": "Type: bugfix, feature, refactor, discovery, decision, change, insight"
+                    },
+                    "narrative": {
+                        "type": "string",
+                        "description": "Detailed narrative explanation"
+                    },
+                    "facts": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Specific facts learned"
+                    },
+                    "concepts": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Concept categories: how-it-works, why-it-exists, what-changed, problem-solution, gotcha, pattern, trade-off"
+                    },
+                    "files_modified": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Files that were modified"
+                    }
+                },
+                "required": ["title", "obs_type"]
+            }),
+        },
+        Tool {
+            name: "cwa_memory_timeline".to_string(),
+            description: "Get a compact timeline of recent observations. Returns index-only data (~50 tokens per entry). Use cwa_memory_get for full details.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "days_back": {
+                        "type": "integer",
+                        "description": "Number of days back to look (default: 7)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max entries to return (default: 20)"
+                    }
+                }
+            }),
+        },
+        Tool {
+            name: "cwa_memory_get".to_string(),
+            description: "Get full details of specific observations by ID. Returns complete data (~500 tokens per entry). Boosts confidence of accessed items.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "ids": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Observation IDs to retrieve"
+                    }
+                },
+                "required": ["ids"]
+            }),
+        },
+        Tool {
+            name: "cwa_memory_search_all".to_string(),
+            description: "Search across both memories and observations using semantic similarity. Returns compact index (~50 tokens per result). Use cwa_memory_get for full details.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Natural language search query"
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Number of results (default: 10)"
+                    }
+                },
+                "required": ["query"]
+            }),
+        },
     ];
 
     Ok(serde_json::json!({ "tools": tools }))
@@ -615,6 +703,135 @@ async fn handle_tool_call(
                 })?;
 
             serde_json::json!({ "results": results })
+        }
+
+        "cwa_observe" => {
+            let title = args["title"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing title".to_string(),
+            })?;
+            let obs_type = args["obs_type"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing obs_type".to_string(),
+            })?;
+            let narrative = args.get("narrative").and_then(|v| v.as_str());
+            let facts: Vec<String> = args.get("facts")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            let concepts: Vec<String> = args.get("concepts")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            let files_modified: Vec<String> = args.get("files_modified")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+
+            // Try with embedding pipeline, fallback to DB-only
+            match cwa_embedding::ObservationPipeline::default_pipeline() {
+                Ok(pipeline) => {
+                    let result = pipeline.add_observation(
+                        pool, &project.id, obs_type, title, narrative,
+                        &facts, &concepts, &files_modified, &[],
+                        None, 0.8,
+                    ).await.map_err(|e| JsonRpcError {
+                        code: -32603,
+                        message: e.to_string(),
+                    })?;
+
+                    serde_json::json!({
+                        "success": true,
+                        "id": result.id,
+                        "embedding_dim": result.embedding_dim
+                    })
+                }
+                Err(_) => {
+                    let obs = cwa_core::memory::add_observation(
+                        pool, &project.id, obs_type, title, narrative,
+                        &facts, &concepts, &files_modified, &[],
+                        None, 0.8,
+                    ).map_err(|e| JsonRpcError {
+                        code: -32603,
+                        message: e.to_string(),
+                    })?;
+
+                    serde_json::json!({
+                        "success": true,
+                        "id": obs.id,
+                        "embedding_dim": 0
+                    })
+                }
+            }
+        }
+
+        "cwa_memory_timeline" => {
+            let days_back = args.get("days_back").and_then(|v| v.as_i64()).unwrap_or(7);
+            let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
+
+            let timeline = cwa_core::memory::get_timeline(pool, &project.id, days_back, limit)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({ "observations": timeline })
+        }
+
+        "cwa_memory_get" => {
+            let ids: Vec<String> = args["ids"].as_array()
+                .ok_or_else(|| JsonRpcError {
+                    code: -32602,
+                    message: "Missing ids array".to_string(),
+                })?
+                .iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect();
+
+            let id_refs: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
+            let observations = cwa_core::memory::get_observations_batch(pool, &id_refs)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            // Boost confidence for accessed items
+            for obs in &observations {
+                let _ = cwa_core::memory::boost_confidence(pool, &obs.id, 0.05);
+            }
+
+            serde_json::json!({ "observations": observations })
+        }
+
+        "cwa_memory_search_all" => {
+            let query = args["query"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing query".to_string(),
+            })?;
+            let top_k = args.get("top_k").and_then(|v| v.as_u64()).unwrap_or(10);
+
+            // Try semantic search, fallback to timeline
+            match cwa_embedding::SemanticSearch::default_search() {
+                Ok(search) => {
+                    let results = search.search_all(query, &project.id, top_k).await
+                        .map_err(|e| JsonRpcError {
+                            code: -32603,
+                            message: e.to_string(),
+                        })?;
+
+                    serde_json::json!({ "results": results })
+                }
+                Err(_) => {
+                    // Fallback to text-based search
+                    let memories = cwa_core::memory::search_memory(pool, &project.id, query)
+                        .map_err(|e| JsonRpcError {
+                            code: -32603,
+                            message: e.to_string(),
+                        })?;
+
+                    serde_json::json!({ "results": memories })
+                }
+            }
         }
 
         "cwa_memory_add" => {

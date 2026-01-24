@@ -8,7 +8,7 @@ use serde::Serialize;
 use tracing::debug;
 
 use crate::ollama::OllamaClient;
-use crate::qdrant::{QdrantStore, MEMORIES_COLLECTION};
+use crate::qdrant::{QdrantStore, MEMORIES_COLLECTION, OBSERVATIONS_COLLECTION};
 
 /// A semantic search result with memory content and similarity score.
 #[derive(Debug, Clone, Serialize)]
@@ -103,5 +103,95 @@ impl SemanticSearch {
         }).collect();
 
         Ok(search_results)
+    }
+
+    /// Search observations by semantic similarity, filtered by project.
+    pub async fn search_observations_project(
+        &self,
+        query: &str,
+        project_id: &str,
+        top_k: u64,
+    ) -> Result<Vec<SemanticSearchResult>> {
+        let query_vector = self.ollama.embed(query).await
+            .context("Failed to embed observation search query")?;
+
+        let results = self.qdrant.search_filtered(
+            OBSERVATIONS_COLLECTION,
+            query_vector,
+            top_k,
+            project_id,
+        ).await.context("Failed to search observations in Qdrant")?;
+
+        let search_results = results.into_iter().map(|r| {
+            let payload = &r.payload;
+            SemanticSearchResult {
+                id: payload.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                content: payload.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                entry_type: payload.get("obs_type").and_then(|v| v.as_str()).unwrap_or("observation").to_string(),
+                context: payload.get("narrative").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                score: r.score,
+                created_at: payload.get("created_at").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            }
+        }).collect();
+
+        Ok(search_results)
+    }
+
+    /// Search across both memories and observations, returning combined results sorted by score.
+    pub async fn search_all(
+        &self,
+        query: &str,
+        project_id: &str,
+        top_k: u64,
+    ) -> Result<Vec<SemanticSearchResult>> {
+        let query_vector = self.ollama.embed(query).await
+            .context("Failed to embed combined search query")?;
+
+        // Search both collections
+        let mem_results = self.qdrant.search_filtered(
+            MEMORIES_COLLECTION,
+            query_vector.clone(),
+            top_k,
+            project_id,
+        ).await.unwrap_or_default();
+
+        let obs_results = self.qdrant.search_filtered(
+            OBSERVATIONS_COLLECTION,
+            query_vector,
+            top_k,
+            project_id,
+        ).await.unwrap_or_default();
+
+        // Combine and sort by score
+        let mut combined: Vec<SemanticSearchResult> = Vec::new();
+
+        for r in mem_results {
+            let payload = &r.payload;
+            combined.push(SemanticSearchResult {
+                id: payload.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                content: payload.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                entry_type: payload.get("entry_type").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                context: payload.get("context").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                score: r.score,
+                created_at: payload.get("created_at").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            });
+        }
+
+        for r in obs_results {
+            let payload = &r.payload;
+            combined.push(SemanticSearchResult {
+                id: payload.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                content: payload.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                entry_type: payload.get("obs_type").and_then(|v| v.as_str()).unwrap_or("observation").to_string(),
+                context: payload.get("narrative").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                score: r.score,
+                created_at: payload.get("created_at").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            });
+        }
+
+        combined.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        combined.truncate(top_k as usize);
+
+        Ok(combined)
     }
 }

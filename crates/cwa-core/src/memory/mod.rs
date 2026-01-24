@@ -1,6 +1,7 @@
 //! Memory and context management.
 
 pub mod model;
+pub mod observation;
 
 use crate::error::CwaResult;
 use crate::task;
@@ -8,8 +9,10 @@ use crate::spec;
 use crate::decision;
 use cwa_db::DbPool;
 use cwa_db::queries::memory as queries;
+use cwa_db::queries::observations as obs_queries;
 use cwa_db::queries::projects as project_queries;
 use model::{MemoryEntry, Session, ContextSummary};
+use observation::{Observation, ObservationIndex, Summary, ObservationType};
 use uuid::Uuid;
 
 /// Create a memory entry.
@@ -157,4 +160,121 @@ pub struct TaskCounts {
     pub in_progress: usize,
     pub review: usize,
     pub done: usize,
+}
+
+// --- Observation Functions ---
+
+/// Add a new observation.
+pub fn add_observation(
+    pool: &DbPool,
+    project_id: &str,
+    obs_type: &str,
+    title: &str,
+    narrative: Option<&str>,
+    facts: &[String],
+    concepts: &[String],
+    files_modified: &[String],
+    files_read: &[String],
+    session_id: Option<&str>,
+    confidence: f64,
+) -> CwaResult<Observation> {
+    // Validate obs_type
+    ObservationType::from_str(obs_type)
+        .ok_or_else(|| crate::error::CwaError::ValidationError(
+            format!("Invalid observation type: '{}'. Use: {}", obs_type, ObservationType::all_variants().join(", "))
+        ))?;
+
+    let id = Uuid::new_v4().to_string();
+
+    let facts_json = if facts.is_empty() { None } else { Some(serde_json::to_string(facts).unwrap()) };
+    let concepts_json = if concepts.is_empty() { None } else { Some(serde_json::to_string(concepts).unwrap()) };
+    let files_mod_json = if files_modified.is_empty() { None } else { Some(serde_json::to_string(files_modified).unwrap()) };
+    let files_read_json = if files_read.is_empty() { None } else { Some(serde_json::to_string(files_read).unwrap()) };
+
+    obs_queries::create_observation(
+        pool, &id, project_id, session_id, obs_type, title, narrative,
+        facts_json.as_deref(), concepts_json.as_deref(),
+        files_mod_json.as_deref(), files_read_json.as_deref(),
+        None, None, confidence,
+    )?;
+
+    let row = obs_queries::get_observation(pool, &id)?
+        .ok_or_else(|| crate::error::CwaError::NotFound("Observation just created not found".to_string()))?;
+
+    Ok(Observation::from_row(row))
+}
+
+/// Get an observation by ID.
+pub fn get_observation(pool: &DbPool, id: &str) -> CwaResult<Option<Observation>> {
+    let row = obs_queries::get_observation(pool, id)?;
+    Ok(row.map(Observation::from_row))
+}
+
+/// Get multiple observations by IDs.
+pub fn get_observations_batch(pool: &DbPool, ids: &[&str]) -> CwaResult<Vec<Observation>> {
+    let rows = obs_queries::get_observations_batch(pool, ids)?;
+    Ok(rows.into_iter().map(Observation::from_row).collect())
+}
+
+/// Get timeline of observations (compact index).
+pub fn get_timeline(pool: &DbPool, project_id: &str, days_back: i64, limit: i64) -> CwaResult<Vec<ObservationIndex>> {
+    let rows = obs_queries::list_observations_timeline(pool, project_id, days_back, limit)?;
+    Ok(rows.into_iter().map(ObservationIndex::from_row).collect())
+}
+
+/// Get high-confidence observations (full details).
+pub fn get_high_confidence_observations(pool: &DbPool, project_id: &str, min_confidence: f64, limit: i64) -> CwaResult<Vec<Observation>> {
+    let rows = obs_queries::list_high_confidence(pool, project_id, min_confidence, limit)?;
+    Ok(rows.into_iter().map(Observation::from_row).collect())
+}
+
+/// Create a summary from recent observations.
+pub fn create_summary(
+    pool: &DbPool,
+    project_id: &str,
+    session_id: Option<&str>,
+    content: &str,
+    key_facts: &[String],
+    observations_count: i64,
+) -> CwaResult<Summary> {
+    let id = Uuid::new_v4().to_string();
+    let key_facts_json = if key_facts.is_empty() { None } else { Some(serde_json::to_string(key_facts).unwrap()) };
+
+    obs_queries::create_summary(
+        pool, &id, project_id, session_id, content,
+        observations_count, key_facts_json.as_deref(), None, None,
+    )?;
+
+    let summaries = obs_queries::get_recent_summaries(pool, project_id, 1)?;
+    let row = summaries.into_iter().next()
+        .ok_or_else(|| crate::error::CwaError::NotFound("Summary just created not found".to_string()))?;
+
+    Ok(Summary::from_row(row))
+}
+
+/// Get recent summaries.
+pub fn get_recent_summaries(pool: &DbPool, project_id: &str, limit: i64) -> CwaResult<Vec<Summary>> {
+    let rows = obs_queries::get_recent_summaries(pool, project_id, limit)?;
+    Ok(rows.into_iter().map(Summary::from_row).collect())
+}
+
+/// Boost confidence of an observation (cap at 1.0).
+pub fn boost_confidence(pool: &DbPool, id: &str, amount: f64) -> CwaResult<()> {
+    if let Some(row) = obs_queries::get_observation(pool, id)? {
+        let new_confidence = (row.confidence + amount).min(1.0);
+        obs_queries::update_confidence(pool, id, new_confidence)?;
+    }
+    Ok(())
+}
+
+/// Decay confidence for all observations in a project.
+pub fn decay_confidence(pool: &DbPool, project_id: &str, factor: f64) -> CwaResult<usize> {
+    let count = obs_queries::decay_all_confidence(pool, project_id, factor)?;
+    Ok(count)
+}
+
+/// Remove observations below a confidence threshold.
+pub fn remove_low_confidence_observations(pool: &DbPool, project_id: &str, min_confidence: f64) -> CwaResult<Vec<String>> {
+    let ids = obs_queries::remove_low_confidence(pool, project_id, min_confidence)?;
+    Ok(ids)
 }

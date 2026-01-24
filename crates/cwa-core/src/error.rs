@@ -59,6 +59,9 @@ pub enum CwaError {
 
     #[error("Not initialized: {0}")]
     NotInitialized(String),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
 }
 
 /// Result type for CWA operations.

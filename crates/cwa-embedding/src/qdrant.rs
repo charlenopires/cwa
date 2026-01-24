@@ -25,6 +25,9 @@ pub const MEMORIES_COLLECTION: &str = "cwa_memories";
 /// Collection name for terms.
 pub const TERMS_COLLECTION: &str = "cwa_terms";
 
+/// Collection name for observations.
+pub const OBSERVATIONS_COLLECTION: &str = "cwa_observations";
+
 /// A search result from Qdrant.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VectorSearchResult {
@@ -85,6 +88,7 @@ impl QdrantStore {
     pub async fn init_collections(&self) -> Result<()> {
         self.ensure_collection(MEMORIES_COLLECTION).await?;
         self.ensure_collection(TERMS_COLLECTION).await?;
+        self.ensure_collection(OBSERVATIONS_COLLECTION).await?;
         Ok(())
     }
 

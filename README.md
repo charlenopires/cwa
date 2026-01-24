@@ -380,8 +380,26 @@ cwa memory search "<query>" [--top-k N]     # Semantic search (default: 5 result
 cwa memory search "<query>" --legacy        # Text-based search (no embeddings)
 cwa memory import                           # Import legacy entries with embeddings
 cwa memory compact [--min-confidence 0.3]   # Remove low-confidence entries
+cwa memory compact --decay 0.98            # Decay all observation confidences
 cwa memory sync                             # Sync CLAUDE.md with current state
 cwa memory export [--output <file>]         # Export memory as JSON
+```
+
+### Observations (Structured Memory)
+
+Observations capture structured development activity with confidence lifecycle, progressive disclosure via MCP, and automatic CLAUDE.md injection.
+
+```bash
+# Record observations
+cwa memory observe "<title>" -t <type>      # bugfix|feature|refactor|discovery|decision|change|insight
+cwa memory observe "Fixed auth token refresh" -t bugfix -f "Token expiring before refresh window"
+cwa memory observe "Use Redis for sessions" -t decision -n "Lower latency than DB queries" --files-modified src/session.rs
+
+# View timeline
+cwa memory timeline [--days 7] [--limit 20] # Recent observations grouped by day
+
+# Generate summaries
+cwa memory summarize [--count 10]           # Compress recent observations into summary
 ```
 
 **Example:**
@@ -389,13 +407,27 @@ cwa memory export [--output <file>]         # Export memory as JSON
 $ cwa memory add "Team prefers functional patterns over OOP" --type preference
 ✓ Memory added (id: a1b2c3d4, embedding: 768 dims)
 
+$ cwa memory observe "Fixed auth token refresh" -t bugfix -f "Token was expiring before refresh window"
+✓ Observation recorded (id: b2c3d4e5, embedding: 768 dims)
+  • [bugfix] Fixed auth token refresh
+    → Token was expiring before refresh window
+
+$ cwa memory timeline --days 3
+→ Observations (last 3 days):
+
+  2024-01-15
+    [BUGFIX] Fixed auth token refresh 80% (b2c3d4e5)
+    [DECISION] Use Redis for session cache 80% (c3d4e5f6)
+
 $ cwa memory search "coding style"
 ✓ Found 2 results:
 
   1. [preference] Team prefers functional patterns over OOP (92%)
   2. [fact] Codebase uses Rust with trait-based composition (78%)
 
-$ cwa memory compact --min-confidence 0.3
+$ cwa memory compact --decay 0.98 --min-confidence 0.3
+✓ Decayed 15 observation confidences by factor 0.98
+✓ Removed 2 low-confidence observations
 ✓ Removed 5 low-confidence memories
 ```
 
@@ -594,6 +626,10 @@ Add to your `.mcp.json`:
 | `cwa_graph_sync` | Trigger SQLite to Neo4j sync |
 | `cwa_memory_semantic_search` | Vector similarity search |
 | `cwa_memory_add` | Store memory with embedding |
+| `cwa_observe` | Record structured observation (progressive disclosure) |
+| `cwa_memory_timeline` | Compact observation timeline (~50 tokens/entry) |
+| `cwa_memory_get` | Full observation details by IDs (~500 tokens/entry) |
+| `cwa_memory_search_all` | Search across memories + observations |
 
 ### Available Resources
 

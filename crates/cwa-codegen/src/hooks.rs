@@ -42,6 +42,21 @@ pub fn generate_hooks(db: &DbPool, project_id: &str) -> Result<GeneratedHooks> {
         }
     }
 
+    // Auto-capture hooks for observations
+    hooks.push(serde_json::json!({
+        "event": "PostToolUse",
+        "matcher": { "tool_name": "write_to_file" },
+        "command": "cwa memory observe \"File created: $TOOL_INPUT_PATH\" --obs-type change --files-modified \"$TOOL_INPUT_PATH\"",
+        "timeout": 10000
+    }));
+
+    hooks.push(serde_json::json!({
+        "event": "PostToolUse",
+        "matcher": { "tool_name": "edit_file" },
+        "command": "cwa memory observe \"File modified: $TOOL_INPUT_PATH\" --obs-type change --files-modified \"$TOOL_INPUT_PATH\"",
+        "timeout": 10000
+    }));
+
     let config = serde_json::json!({
         "hooks": hooks
     });
