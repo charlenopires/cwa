@@ -665,10 +665,10 @@ cwa analyze market <niche>         # Analyze a market segment
 ### Servers
 
 ```bash
-cwa serve [--port <port>]          # Start web server (default: 3000)
-cwa mcp stdio                     # Run MCP server over stdio
-cwa mcp planner                   # Run MCP planner server (Claude Desktop)
-cwa mcp status                    # Show MCP configuration examples
+cwa serve [--port <port>] [--host <host>]  # Start web server (default: 127.0.0.1:3030)
+cwa mcp stdio                              # Run MCP server over stdio
+cwa mcp planner                            # Run MCP planner server (Claude Desktop)
+cwa mcp status                             # Show MCP configuration examples
 ```
 
 ## Claude Code Integration
@@ -981,7 +981,7 @@ CWA generates a complete Claude Code configuration directory:
 
 ## Web Dashboard
 
-Start with `cwa serve` and open `http://localhost:3000`.
+Start with `cwa serve` and open `http://localhost:3030`.
 
 ### REST API (`/api/*`)
 

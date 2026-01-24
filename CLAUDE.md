@@ -203,7 +203,7 @@ cwa analyze features <competitor>        # Analyze features
 cwa analyze market <niche>               # Analyze market segment
 
 # Servers
-cwa serve [--port <port>]                # Start web server (default: 3000)
+cwa serve [--port <port>] [--host <host>] # Start web server (default: 127.0.0.1:3030)
 cwa mcp stdio                            # Run MCP server
 cwa mcp planner                          # Run MCP planner (Claude Desktop)
 cwa mcp status                           # Show MCP configuration
@@ -271,7 +271,7 @@ The MCP server is the **primary runtime interface** between Claude Code and CWA.
 
 ## Web API
 
-Base URL: `http://localhost:3000`
+Base URL: `http://localhost:3030`
 
 ### REST Endpoints (`/api/*`)
 | Method | Endpoint | Description |
