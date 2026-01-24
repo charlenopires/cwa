@@ -12,6 +12,9 @@ pub enum SpecCommands {
     /// Create a new specification
     New(NewSpecArgs),
 
+    /// Parse a long prompt and create multiple specifications
+    FromPrompt(FromPromptArgs),
+
     /// List all specifications
     List,
 
@@ -37,6 +40,24 @@ pub struct NewSpecArgs {
     /// Priority (low, medium, high, critical)
     #[arg(long, default_value = "medium")]
     pub priority: String,
+}
+
+#[derive(Args)]
+pub struct FromPromptArgs {
+    /// Long prompt text (use quotes). If omitted, reads from stdin.
+    pub text: Option<String>,
+
+    /// Read prompt from a file
+    #[arg(short, long)]
+    pub file: Option<String>,
+
+    /// Priority for all created specs (low, medium, high, critical)
+    #[arg(long, default_value = "medium")]
+    pub priority: String,
+
+    /// Preview parsed specs without creating them
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[derive(Args)]
@@ -84,6 +105,67 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
                 spec.title.cyan(),
                 spec.id.dimmed()
             );
+        }
+
+        SpecCommands::FromPrompt(args) => {
+            let input = if let Some(file_path) = &args.file {
+                std::fs::read_to_string(file_path)
+                    .map_err(|e| anyhow::anyhow!("Failed to read file '{}': {}", file_path, e))?
+            } else if let Some(text) = &args.text {
+                text.clone()
+            } else {
+                // Read from stdin
+                use std::io::Read;
+                let mut buffer = String::new();
+                eprintln!("{}", "Reading from stdin (Ctrl+D to finish):".dimmed());
+                std::io::stdin().read_to_string(&mut buffer)?;
+                buffer
+            };
+
+            let parsed = cwa_core::spec::parser::parse_prompt(&input);
+
+            if parsed.is_empty() {
+                println!("{} No specs could be parsed from the input.", "✗".red().bold());
+                return Ok(());
+            }
+
+            if args.dry_run {
+                println!(
+                    "{} Would create {} spec(s):\n",
+                    "⊙".blue().bold(),
+                    parsed.len()
+                );
+                for (i, entry) in parsed.iter().enumerate() {
+                    println!("  {}. {} {}", i + 1, entry.title.cyan(), format!("[{}]", args.priority).dimmed());
+                    if let Some(desc) = &entry.description {
+                        for line in desc.lines().take(3) {
+                            println!("     {}", line.dimmed());
+                        }
+                    }
+                }
+                return Ok(());
+            }
+
+            let specs = cwa_core::spec::create_specs_from_prompt(
+                &pool,
+                &project.id,
+                &input,
+                &args.priority,
+            )?;
+
+            println!(
+                "{} Created {} spec(s):\n",
+                "✓".green().bold(),
+                specs.len()
+            );
+            for (i, spec) in specs.iter().enumerate() {
+                println!(
+                    "  {}. {} ({})",
+                    i + 1,
+                    spec.title.cyan(),
+                    spec.id.dimmed()
+                );
+            }
         }
 
         SpecCommands::List => {

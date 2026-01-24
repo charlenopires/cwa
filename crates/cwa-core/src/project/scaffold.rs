@@ -17,6 +17,8 @@ pub async fn create_project(target_dir: &Path, name: &str) -> CwaResult<()> {
     create_agent_templates(target_dir).await?;
     create_command_templates(target_dir).await?;
     create_rule_templates(target_dir).await?;
+    create_skill_templates(target_dir).await?;
+    create_hooks_json(target_dir).await?;
 
     // Initialize database
     let db_path = target_dir.join(".cwa/cwa.db");
@@ -48,6 +50,9 @@ async fn create_directories(target_dir: &Path) -> CwaResult<()> {
         ".claude/agents",
         ".claude/commands",
         ".claude/rules",
+        ".claude/skills",
+        ".claude/skills/workflow-kickoff",
+        ".claude/skills/refactor-safe",
         "docs",
     ];
 
@@ -297,6 +302,120 @@ You are a Code Reviewer. Your role is to:
 "#;
     fs::write(agents_dir.join("reviewer.md"), reviewer).await?;
 
+    // Orchestrator agent
+    let orchestrator = r#"---
+name: orchestrator
+description: Coordinates workflow across agents and manages task lifecycle
+tools: Read, Bash, Glob, Grep
+---
+
+You are a Workflow Orchestrator. Your role is to:
+
+1. Coordinate the full development lifecycle (spec → tasks → implement → review → done)
+2. Delegate work to specialized agents (analyst, architect, specifier, implementer, reviewer)
+3. Enforce WIP limits and workflow rules
+4. Keep project context synchronized
+
+## Workflow Steps
+
+1. **Understand** - Use `cwa context status` to assess current state
+2. **Plan** - Identify which agent should handle the current need
+3. **Delegate** - Invoke the appropriate agent with clear instructions
+4. **Verify** - Check outputs against acceptance criteria
+5. **Advance** - Move tasks through the Kanban workflow
+
+## Rules
+- Never skip the spec phase for non-trivial features
+- Ensure only 1 task is in_progress at a time
+- Record architectural decisions as they emerge
+- Sync CLAUDE.md after significant changes
+- Always check `cwa task wip` before moving tasks
+"#;
+    fs::write(agents_dir.join("orchestrator.md"), orchestrator).await?;
+
+    // Tester agent
+    let tester = r#"---
+name: tester
+description: Generates tests from acceptance criteria (TDD/BDD)
+tools: Read, Write, Edit, Bash
+---
+
+You are a Test Engineer following TDD/BDD practices. Your role is to:
+
+1. Read acceptance criteria from specifications
+2. Generate test cases BEFORE implementation
+3. Write integration tests for critical paths
+4. Ensure edge cases and error conditions are covered
+
+## Process
+
+1. **Read spec**: `cwa spec status <spec>` to get acceptance criteria
+2. **Design tests**: Convert Given/When/Then into test structure
+3. **Write tests**: Create failing tests first
+4. **Verify coverage**: Ensure all criteria have corresponding tests
+
+## Test Structure
+```
+tests/
+├── unit/           # Fast, isolated tests
+├── integration/    # Cross-module tests
+└── acceptance/     # Spec-driven tests (1:1 with criteria)
+```
+
+## Rules
+- One test per acceptance criterion minimum
+- Test names describe behavior, not implementation
+- Mock external dependencies, never internal logic
+- Integration tests use real database (in-memory SQLite)
+"#;
+    fs::write(agents_dir.join("tester.md"), tester).await?;
+
+    // Documenter agent
+    let documenter = r#"---
+name: documenter
+description: Maintains documentation, ADRs, and CLAUDE.md synchronization
+tools: Read, Write, Edit, Bash
+---
+
+You are a Documentation Engineer. Your role is to:
+
+1. Keep CLAUDE.md synchronized with project state
+2. Write and maintain Architectural Decision Records (ADRs)
+3. Document public APIs and domain concepts
+4. Update the domain glossary as new terms emerge
+
+## ADR Format
+
+```markdown
+# ADR-NNN: Title
+
+## Status
+Proposed | Accepted | Deprecated | Superseded
+
+## Context
+What is the issue we're seeing that motivates this decision?
+
+## Decision
+What is the change we're proposing?
+
+## Consequences
+What becomes easier or harder as a result?
+```
+
+## When to Document
+- New bounded context discovered → update domain model
+- Architecture decision made → create ADR via `cwa memory add`
+- New domain term used → add to glossary
+- Spec completed → run `cwa codegen claude-md`
+
+## Rules
+- Documentation lives next to the code it describes
+- Prefer examples over abstract explanations
+- Keep CLAUDE.md under token budget (check with `cwa tokens analyze`)
+- Use ubiquitous language from the domain glossary
+"#;
+    fs::write(agents_dir.join("documenter.md"), documenter).await?;
+
     Ok(())
 }
 
@@ -364,6 +483,124 @@ Generate a summary of the current development session.
 "#;
     fs::write(commands_dir.join("session-summary.md"), session_summary).await?;
 
+    // Next task command
+    let next_task = r#"# Next Task
+
+Pick the next task from the backlog and start working on it.
+
+## Steps
+1. Check WIP limits: `cwa task wip`
+2. If in_progress is at limit, finish current task first
+3. Pick highest priority task from `todo` column
+4. Move it to `in_progress`: `cwa task move <id> in_progress`
+5. Load the associated spec: `cwa spec status <spec>`
+6. Begin implementation following the spec
+
+## Pre-conditions
+- No task currently in_progress (WIP limit: 1)
+- Task must be in `todo` column
+- Associated spec must have acceptance criteria
+"#;
+    fs::write(commands_dir.join("next-task.md"), next_task).await?;
+
+    // Review code command
+    let review_code = r#"# Review Code
+
+Review the current changes against the specification's acceptance criteria.
+
+## Steps
+1. Get current task: `cwa_get_current_task()`
+2. Load spec: `cwa_get_spec(task.spec_id)`
+3. Read changed files (git diff)
+4. For each acceptance criterion:
+   - Verify implementation exists
+   - Check test coverage
+   - Mark as pass/fail
+5. If all pass: `cwa task move <id> review`
+6. If issues found: list them and keep in_progress
+
+## Checklist
+- [ ] All acceptance criteria met
+- [ ] Tests pass
+- [ ] No new warnings or lint issues
+- [ ] No hardcoded values or secrets
+- [ ] Error handling is appropriate
+"#;
+    fs::write(commands_dir.join("review-code.md"), review_code).await?;
+
+    // Domain discover command
+    let domain_discover = r#"# Domain Discovery
+
+Interactive workflow for discovering domain concepts in your project.
+
+## Steps
+1. Ask about the core business problem
+2. Identify key actors and roles
+3. Map out main business processes
+4. Extract nouns → potential entities/value objects
+5. Extract verbs → potential commands/events
+6. Group related concepts → bounded contexts
+7. Define relationships between contexts
+
+## Output
+- Create bounded contexts: `cwa domain context new <name>`
+- Add to glossary
+- Record in knowledge graph: `cwa graph sync`
+- Add key insights to memory: `cwa memory add`
+
+## Questions to Ask
+- What is the core business value?
+- Who are the main actors?
+- What are the key business processes?
+- Where do different teams/concerns diverge? (context boundaries)
+- What terms mean different things in different contexts?
+"#;
+    fs::write(commands_dir.join("domain-discover.md"), domain_discover).await?;
+
+    // Sync context command
+    let sync_context = r#"# Sync Context
+
+Regenerate all Claude Code artifacts and synchronize the knowledge graph.
+
+## Steps
+1. Regenerate CLAUDE.md: `cwa codegen claude-md`
+2. Regenerate agents: `cwa codegen agent --all`
+3. Regenerate hooks: `cwa codegen hooks`
+4. Sync knowledge graph: `cwa graph sync`
+5. Sync memory: `cwa memory sync`
+6. Report token usage: `cwa tokens report`
+
+## When to Run
+- After creating new bounded contexts
+- After defining new specs
+- After recording important decisions
+- At the start of each development session
+- After completing a major feature
+"#;
+    fs::write(commands_dir.join("sync-context.md"), sync_context).await?;
+
+    // Status command
+    let status = r#"# Project Status
+
+Display a comprehensive overview of the current project state.
+
+## Information to Gather
+1. `cwa context status` — Active spec, current task, session info
+2. `cwa task board` — Kanban board state
+3. `cwa task wip` — WIP limit status
+4. `cwa spec list` — All specifications and their states
+5. `cwa graph status` — Knowledge graph statistics
+6. `cwa tokens analyze --all` — Token budget usage
+
+## Output Format
+Present a concise summary:
+- Current focus (active spec + in_progress task)
+- Blockers or issues
+- Progress metrics (done/total tasks)
+- Suggested next action
+"#;
+    fs::write(commands_dir.join("status.md"), status).await?;
+
     Ok(())
 }
 
@@ -426,6 +663,204 @@ These rules apply when writing tests.
 "#;
     fs::write(rules_dir.join("tests.md"), test_rules).await?;
 
+    // Workflow rules
+    let workflow_rules = r#"# Workflow Rules
+
+These rules enforce the CWA development workflow.
+
+## Spec Before Code
+- Every non-trivial feature requires a specification
+- Specs must have acceptance criteria before implementation begins
+- Use `cwa spec validate` to check completeness
+
+## Kanban Discipline
+- Only 1 task in_progress at a time (WIP limit enforced)
+- Tasks flow: backlog → todo → in_progress → review → done
+- Never skip the review step
+- Check WIP with `cwa task wip` before moving tasks
+
+## Decision Tracking
+- Record architectural decisions as they are made
+- Use `cwa memory add "<decision>" --type decision`
+- Decisions should include rationale (the "why")
+- Review past decisions before making conflicting ones
+
+## Context Sync
+- Run `cwa codegen claude-md` after significant changes
+- Keep token budget below limits (`cwa tokens optimize`)
+- Sync graph after new entities: `cwa graph sync`
+"#;
+    fs::write(rules_dir.join("workflow.md"), workflow_rules).await?;
+
+    // Memory rules
+    let memory_rules = r#"# Memory Rules
+
+When and how to record project memory.
+
+## What to Record
+
+### Decisions (--type decision)
+- Technology choices and trade-offs
+- Architecture patterns adopted
+- Libraries chosen (and alternatives rejected)
+- API design decisions
+
+### Facts (--type fact)
+- External API behaviors discovered
+- Performance characteristics measured
+- Environment-specific behaviors
+- Integration quirks
+
+### Preferences (--type preference)
+- Code style preferences
+- Naming conventions agreed upon
+- Team workflow preferences
+- Tool configuration choices
+
+### Patterns (--type pattern)
+- Recurring code patterns in the project
+- Error handling approaches
+- Testing strategies that work well
+- Deployment procedures
+
+## When to Record
+- After making a non-obvious technical choice
+- When discovering unexpected behavior
+- When a team member states a preference
+- After resolving a difficult bug (root cause)
+- When establishing a new pattern
+
+## Rules
+- Keep entries concise (1-2 sentences)
+- Include context ("for X, we do Y because Z")
+- Use `cwa memory search` before adding duplicates
+- Periodically compact: `cwa memory compact`
+"#;
+    fs::write(rules_dir.join("memory.md"), memory_rules).await?;
+
+    Ok(())
+}
+
+/// Create initial skill templates.
+async fn create_skill_templates(target_dir: &Path) -> CwaResult<()> {
+    let skills_dir = target_dir.join(".claude/skills");
+
+    // Workflow kickoff skill
+    let workflow_kickoff = r#"# Workflow Kickoff
+
+Start a new feature workflow from a high-level description.
+
+## What This Skill Does
+
+Takes a feature idea and drives it through the full CWA workflow:
+1. Creates a specification with acceptance criteria
+2. Breaks the spec into atomic tasks
+3. Sets up the Kanban board
+4. Generates Claude Code artifacts
+
+## Usage
+
+Provide a feature description and this skill will:
+
+### Step 1: Specification
+- Create spec: `cwa spec new "<title>" --description "<desc>" --priority <p>`
+- Define acceptance criteria (Given/When/Then format)
+
+### Step 2: Task Breakdown
+- Create tasks from the spec's acceptance criteria
+- Each task should be completable in under 2 hours
+- Link tasks to the spec
+
+### Step 3: Board Setup
+- Move tasks to `todo` column
+- Respect WIP limits
+
+### Step 4: Artifact Generation
+- Generate agent if new bounded context: `cwa codegen agent`
+- Generate skill from spec: `cwa codegen skill <spec-id>`
+- Update CLAUDE.md: `cwa codegen claude-md`
+
+## Input
+A natural language description of the feature to implement.
+
+## Output
+- Spec created with acceptance criteria
+- Tasks on the Kanban board
+- Claude Code artifacts generated
+- Ready to start implementation
+"#;
+    fs::write(skills_dir.join("workflow-kickoff/SKILL.md"), workflow_kickoff).await?;
+
+    // Refactor safe skill
+    let refactor_safe = r#"# Safe Refactoring
+
+Perform a refactoring with test safety net.
+
+## What This Skill Does
+
+Guides a safe refactoring process:
+1. Ensures tests exist and pass before changes
+2. Performs the refactoring in small, verified steps
+3. Verifies tests still pass after each step
+
+## Process
+
+### Pre-Refactor
+1. Identify the code to refactor
+2. Run existing tests: verify they pass
+3. If no tests exist: write characterization tests first
+4. Record the refactoring decision: `cwa memory add "<what and why>" --type decision`
+
+### During Refactor
+1. Make one small change at a time
+2. Run tests after each change
+3. If tests fail: revert the last change
+4. Commit after each successful step
+
+### Post-Refactor
+1. Run full test suite
+2. Check for any new warnings
+3. Update documentation if APIs changed
+4. Move task to review: `cwa task move <id> review`
+
+## Rules
+- Never refactor and add features simultaneously
+- Keep commits atomic (one logical change each)
+- If tests don't exist, write them first (separate commit)
+- Preserve all existing behavior unless explicitly changing it
+"#;
+    fs::write(skills_dir.join("refactor-safe/SKILL.md"), refactor_safe).await?;
+
+    Ok(())
+}
+
+/// Create initial hooks.json.
+async fn create_hooks_json(target_dir: &Path) -> CwaResult<()> {
+    let hooks = serde_json::json!({
+        "hooks": [
+            {
+                "event": "pre-tool-call",
+                "tool": "Write",
+                "command": "echo '[CWA] Remember: check test coverage for new/modified files'",
+                "description": "Remind about test coverage when writing files"
+            },
+            {
+                "event": "pre-tool-call",
+                "tool": "Bash(git commit*)",
+                "command": "cwa task wip 2>/dev/null || true",
+                "description": "Check WIP limits before committing"
+            },
+            {
+                "event": "post-tool-call",
+                "tool": "Bash(cargo test*)",
+                "command": "echo '[CWA] Tests completed. Update task status if all pass: cwa task move <id> review'",
+                "description": "Remind to advance task after tests pass"
+            }
+        ]
+    });
+
+    let json = serde_json::to_string_pretty(&hooks)?;
+    fs::write(target_dir.join(".claude/hooks.json"), json).await?;
     Ok(())
 }
 

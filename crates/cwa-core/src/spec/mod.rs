@@ -1,6 +1,7 @@
 //! Specification management (SDD).
 
 pub mod model;
+pub mod parser;
 
 use crate::error::{CwaError, CwaResult};
 use cwa_db::DbPool;
@@ -92,6 +93,28 @@ pub fn validate_spec(pool: &DbPool, id: &str) -> CwaResult<ValidationResult> {
         is_valid: issues.is_empty(),
         issues,
     })
+}
+
+/// Create multiple specs from a parsed prompt.
+pub fn create_specs_from_prompt(
+    pool: &DbPool,
+    project_id: &str,
+    input: &str,
+    priority: &str,
+) -> CwaResult<Vec<Spec>> {
+    let parsed = parser::parse_prompt(input);
+    if parsed.is_empty() {
+        return Err(CwaError::ValidationError("No specs could be parsed from the input".to_string()));
+    }
+
+    let mut specs = Vec::new();
+    for entry in parsed {
+        let prio = if entry.priority == "medium" { priority } else { &entry.priority };
+        let spec = create_spec(pool, project_id, &entry.title, entry.description.as_deref(), prio)?;
+        specs.push(spec);
+    }
+
+    Ok(specs)
 }
 
 /// Result of spec validation.

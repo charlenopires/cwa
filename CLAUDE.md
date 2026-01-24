@@ -69,6 +69,7 @@ cwa context status                       # Current focus summary
 
 # Specifications (SDD)
 cwa spec new <title>                     # Create specification
+cwa spec from-prompt [<text>] [--file]   # Parse long prompt into multiple specs
 cwa spec list                            # List all specs
 cwa spec status [<spec>]                 # Show spec details
 cwa spec validate <spec>                 # Validate completeness
@@ -201,10 +202,12 @@ WIP limits enforced:
 
 ```
 .claude/
-├── agents/           # One .md per bounded context
-├── skills/           # One dir per approved spec
+├── agents/           # One .md per bounded context (+ 8 built-in)
+├── skills/           # One dir per approved spec (+ 2 built-in)
 │   └── <slug>/
 │       └── SKILL.md
+├── commands/         # Slash commands (8 built-in)
+├── rules/            # Code rules (5 built-in)
 └── hooks.json        # Validation hooks from invariants
 CLAUDE.md             # Regenerated project context
 ```
@@ -221,13 +224,14 @@ cargo test --workspace   # Run all tests
 ```
 project/
 ├── .cwa/
-│   └── cwa.db               # SQLite database
+│   ├── cwa.db               # SQLite database
+│   └── constitution.md      # Project values & constraints
 ├── .claude/
-│   ├── agents/              # Generated + custom agents
-│   ├── skills/              # Generated skill definitions
-│   ├── commands/            # Slash commands
-│   ├── rules/               # Project rules
-│   └── hooks.json           # Generated hooks
+│   ├── agents/              # 8 built-in + generated from contexts
+│   ├── skills/              # 2 built-in + generated from specs
+│   ├── commands/            # 8 slash commands
+│   ├── rules/               # 5 rule files
+│   └── hooks.json           # Validation hooks
 ├── docker/
 │   ├── docker-compose.yml   # Infrastructure services
 │   ├── neo4j/conf/          # Neo4j configuration
