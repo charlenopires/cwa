@@ -83,6 +83,11 @@ pub async fn run_stdio(pool: Arc<DbPool>) -> anyhow::Result<()> {
             }
         };
 
+        // JSON-RPC 2.0: notifications (no id) must not receive responses
+        if request.id.is_none() {
+            continue;
+        }
+
         let response = handle_request(&pool, request).await;
         writeln!(stdout, "{}", serde_json::to_string(&response)?)?;
         stdout.flush()?;

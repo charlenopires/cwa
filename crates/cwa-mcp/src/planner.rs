@@ -86,6 +86,11 @@ pub async fn run_planner_stdio() -> anyhow::Result<()> {
             }
         };
 
+        // JSON-RPC 2.0: notifications (no id) must not receive responses
+        if request.id.is_none() {
+            continue;
+        }
+
         let response = handle_request(request).await;
         if write_response(&mut stdout, &response).is_err() {
             break;
@@ -112,14 +117,6 @@ fn write_response(stdout: &mut io::Stdout, response: &JsonRpcResponse) -> io::Re
 async fn handle_request(request: JsonRpcRequest) -> JsonRpcResponse {
     let result = match request.method.as_str() {
         "initialize" => handle_initialize(),
-        "notifications/initialized" => {
-            return JsonRpcResponse {
-                jsonrpc: "2.0".to_string(),
-                id: request.id,
-                result: Some(serde_json::json!({})),
-                error: None,
-            };
-        }
         "tools/list" => handle_tools_list(),
         "tools/call" => handle_tool_call(request.params).await,
         "resources/list" => Ok(serde_json::json!({ "resources": [] })),
