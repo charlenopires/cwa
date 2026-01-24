@@ -128,149 +128,57 @@ pub fn render_planning_document(prompt: &str, existing: Option<ExistingState>) -
 
     // Header and instructions
     doc.push_str(HEADER);
-    doc.push_str(&format!("\n## User Prompt\n\n> {}\n", prompt));
+    doc.push_str(&format!("\nUSER REQUEST: {}\n", prompt));
 
     // Template sections
     doc.push_str(TEMPLATE_SECTIONS);
 
-    // If existing state is available, append it
+    // If existing state is available, show it as already-executed commands
     if let Some(state) = existing {
-        doc.push_str("\n---\n\n## Existing Project State\n\n");
-        doc.push_str(&format!("**Project:** {}\n\n", state.project_name));
+        doc.push_str(&format!("\nALREADY EXISTS (project: \"{}\") — do NOT recreate these, only ADD new ones:\n\n", state.project_name));
 
         if !state.contexts.is_empty() {
-            doc.push_str("### Bounded Contexts\n\n");
+            doc.push_str("# Existing contexts:\n");
             for ctx in &state.contexts {
-                doc.push_str(&format!("- **{}**", ctx.name));
-                if let Some(desc) = &ctx.description {
-                    doc.push_str(&format!(" — {}", desc));
-                }
-                doc.push('\n');
+                let desc = ctx.description.as_deref().unwrap_or("");
+                doc.push_str(&format!("# - {} ({})\n", ctx.name, desc));
             }
-            doc.push('\n');
         }
 
         if !state.specs.is_empty() {
-            doc.push_str("### Specifications\n\n");
+            doc.push_str("# Existing specs:\n");
             for spec in &state.specs {
-                doc.push_str(&format!(
-                    "#### {} `[{}]` `[{}]` `{}`\n",
-                    spec.title, spec.status, spec.priority, spec.id
-                ));
-                if let Some(desc) = &spec.description {
-                    doc.push_str(&format!("{}\n", desc));
-                }
-                if !spec.acceptance_criteria.is_empty() {
-                    doc.push_str("\nCriteria:\n");
-                    for c in &spec.acceptance_criteria {
-                        doc.push_str(&format!("- [ ] {}\n", c));
-                    }
-                }
-                doc.push('\n');
+                doc.push_str(&format!("# - {} [{}] [{}]\n", spec.title, spec.status, spec.priority));
             }
-        }
-
-        if !state.tasks.is_empty() {
-            doc.push_str("### Tasks\n\n");
-            doc.push_str("| Status | Priority | Title | Spec |\n");
-            doc.push_str("|--------|----------|-------|------|\n");
-            for task in &state.tasks {
-                doc.push_str(&format!(
-                    "| {} | {} | {} | {} |\n",
-                    task.status,
-                    task.priority,
-                    task.title,
-                    task.spec_id.as_deref().unwrap_or("-")
-                ));
-            }
-            doc.push('\n');
-        }
-
-        if !state.decisions.is_empty() {
-            doc.push_str("### Decisions\n\n");
-            for dec in &state.decisions {
-                doc.push_str(&format!(
-                    "- **{}** `[{}]`: {}\n",
-                    dec.title, dec.status, dec.decision
-                ));
-            }
-            doc.push('\n');
         }
 
         if !state.glossary.is_empty() {
-            doc.push_str("### Glossary\n\n");
-            doc.push_str("| Term | Definition |\n");
-            doc.push_str("|------|------------|\n");
+            doc.push_str("# Existing glossary:\n");
             for g in &state.glossary {
-                doc.push_str(&format!("| {} | {} |\n", g.term, g.definition));
+                doc.push_str(&format!("# - {}: {}\n", g.term, g.definition));
             }
-            doc.push('\n');
         }
 
-        doc.push_str("### Continuation Notes\n\n");
-        doc.push_str("Based on the existing state above, integrate new requirements with what already exists. ");
-        doc.push_str("Add new specs, extend domain model, and generate additional tasks as needed. ");
-        doc.push_str("Use `cwa spec add-criteria` to extend existing specs rather than creating duplicates.\n");
+        doc.push_str("# Generate ONLY new commands that extend the project. Use cwa spec add-criteria for existing specs.\n\n");
     }
 
     doc
 }
 
-const HEADER: &str = r#"# CWA Software Planning Document
+const HEADER: &str = r#"You are a software architect that outputs ONLY executable CWA CLI commands.
 
-> **INSTRUCTIONS FOR CLAUDE:**
->
-> 1. **Do NOT write any code.** Your role is to plan, ask questions, and generate CWA commands.
-> 2. Read the user's prompt below carefully.
-> 3. Ask 3-5 clarifying questions about:
->    - Target users and their primary workflows
->    - Technical constraints (language, framework, deployment)
->    - Scale expectations (users, data volume, performance)
->    - Integration requirements (APIs, databases, auth providers)
->    - Non-functional requirements (security, monitoring, compliance)
-> 4. Based on the user's answers, think through the sections below internally.
-> 5. **YOUR FINAL OUTPUT MUST BE A SINGLE MARKDOWN WITH ONLY EXECUTABLE CWA CLI COMMANDS.**
->    - Do NOT output descriptive sections (no "SPEC-1: Title" with bullet points).
->    - Output ONLY the `CWA Bootstrap Commands` section as a bash code block.
->    - ALL placeholders MUST be replaced with actual project data.
->    - Each command must be complete, copy-pasteable, and runnable in Claude Code.
-> 6. The user will paste this output directly into **Claude Code** terminal.
->
-> **OUTPUT FORMAT RULES:**
-> - The final output is a single ```bash code block with all commands.
-> - Use the 10-phase workflow structure shown in the template below.
-> - Replace ALL `[placeholders]` with real data derived from the user's answers.
-> - Specs MUST include `--description`, `--priority`, and multiple `-c` flags with real criteria.
-> - Glossary terms MUST use real domain-specific terms from the project.
-> - Decisions MUST include real technology choices and rationale.
-> - DO NOT include phases that are not relevant (e.g., skip infra if not needed).
-> - DO NOT abbreviate — include ALL specs, ALL criteria, ALL terms, ALL decisions.
+RULES:
+1. Ask 3-5 clarifying questions first (users, tech stack, scale, integrations, constraints).
+2. After the user answers, output a SINGLE bash code block with CWA commands. Nothing else.
+3. NO descriptions, NO bullet points, NO markdown sections, NO explanations outside the code block.
+4. Follow the 10-phase structure shown in the example below.
+5. ALL data must be real (derived from the user's answers), NOT placeholders.
+6. Include ALL specs with ALL acceptance criteria. Do NOT abbreviate.
 
 "#;
 
 const TEMPLATE_SECTIONS: &str = r#"
----
-
-## Internal Planning (use as reasoning scaffold — DO NOT include in final output)
-
-Think through these sections to derive the commands, but DO NOT output them:
-
-- **Project Overview**: Name, description, tech stack, constraints
-- **Bounded Contexts**: Major responsibility boundaries, key entities
-- **Domain Model**: Entities, value objects, aggregates, invariants, events, services
-- **Glossary**: Domain-specific terms with precise definitions
-- **Architectural Decisions**: Technology choices with rationale
-- **Specifications**: Features with testable acceptance criteria
-- **Task Breakdown**: One task per criterion
-
----
-
-## YOUR OUTPUT — CWA Bootstrap Commands
-
-**This is the ONLY section you output.** Replace ALL placeholders with real project data.
-Output as a single markdown document with bash code blocks. Include all 10 phases.
-
-### Example output (for a "Session Manager" Chrome extension):
+EXAMPLE OUTPUT (for a "Session Manager" Chrome extension):
 
 ```bash
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -395,37 +303,6 @@ cwa context status
 cwa tokens analyze --all
 ```
 
-**END OF EXAMPLE.** Now generate the commands for the user's prompt below, following the same format with ALL 10 phases and real project data.
-
----
-
-## Claude Code Development Workflow
-
-After the user executes the bootstrap commands, they use this workflow in Claude Code:
-
-### Session Start
-```bash
-cwa context status                     # Quick overview
-cwa task board                         # See Kanban board
-```
-
-### Work Cycle
-```bash
-cwa task move [task-id] in_progress    # Claim a task (WIP limit: 1)
-# Implement following spec acceptance criteria
-cwa memory observe "[what happened]" -t bugfix -f "[root cause]"
-cwa memory observe "[discovery]" -t discovery -f "[key fact]"
-cwa memory add "[Decision with rationale]" --type decision
-cwa graph impact spec [spec-id]        # Check impact before changes
-cwa task move [task-id] done           # Complete task
-```
-
-### End of Session
-```bash
-cwa memory observe "[session summary]" -t insight -f "[learning]"
-cwa codegen all                        # Regenerate artifacts
-cwa graph sync                         # Update knowledge graph
-cwa tokens analyze --all               # Verify token budget
-```
+END OF EXAMPLE. Now generate commands for the user's prompt below. Same format. All 10 phases. Real data only.
 
 "#;
