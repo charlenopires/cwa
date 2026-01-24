@@ -128,13 +128,16 @@ cwa spec list                            # List all specs
 cwa spec status [<spec>]                 # Show spec details
 cwa spec validate <spec>                 # Validate completeness
 cwa spec archive <spec-id>               # Archive a spec
+cwa spec clear [--confirm]               # Delete all specs
 
 # Tasks (Kanban)
 cwa task new <title>                     # Create task
+cwa task list                            # List all tasks
 cwa task generate <spec> [--dry-run]     # Auto-create tasks from spec criteria
 cwa task move <id> <status>              # Move task through workflow
 cwa task board                           # Display Kanban board
 cwa task wip                             # Show WIP limits status
+cwa task clear <spec> [--confirm]        # Delete all tasks for a spec
 
 # Domain Modeling (DDD)
 cwa domain discover                      # Interactive domain discovery

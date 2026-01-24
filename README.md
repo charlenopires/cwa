@@ -271,6 +271,7 @@ cwa spec list
 cwa spec status [<spec>]
 cwa spec validate <spec>
 cwa spec archive <spec-id>
+cwa spec clear [--confirm]
 ```
 
 **Example: Creating a spec with acceptance criteria:**
@@ -326,14 +327,27 @@ abc123   User Authentication    draft    high
 def456   Payment Processing     active   medium
 ```
 
+**Example: Clearing all specs:**
+```bash
+# Preview (requires confirmation)
+$ cwa spec clear
+! This will permanently delete 2 spec(s). Run with --confirm to confirm.
+
+# Execute
+$ cwa spec clear --confirm
+✓ Cleared 2 spec(s).
+```
+
 ### Tasks (Kanban)
 
 ```bash
 cwa task new <title> [--description <d>] [--spec <id>] [--priority <p>]
+cwa task list                      # List all tasks
 cwa task generate <spec> [--status <s>] [--prefix <p>] [--dry-run]
 cwa task move <task-id> <status>   # backlog|todo|in_progress|review|done
 cwa task board                     # Display Kanban board
 cwa task wip                       # Show WIP limits status
+cwa task clear <spec> [--confirm]  # Delete all tasks for a spec
 ```
 
 **Example:**
@@ -384,6 +398,17 @@ $ cwa task generate abc123 --prefix "Auth"
 
   1. Auth: User can register with email and password (task-004)
   ...
+```
+
+**Example: Clearing tasks for a spec:**
+```bash
+# Preview (requires confirmation)
+$ cwa task clear abc123
+! This will permanently delete 3 task(s) for spec 'User Authentication'. Run with --confirm to confirm.
+
+# Execute
+$ cwa task clear abc123 --confirm
+✓ Cleared 3 task(s) for spec 'User Authentication'.
 ```
 
 ### Domain Modeling (DDD)

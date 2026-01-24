@@ -26,6 +26,19 @@ pub enum TaskCommands {
 
     /// Show work-in-progress status
     Wip,
+
+    /// Clear all tasks for a spec
+    Clear(ClearTaskArgs),
+}
+
+#[derive(Args)]
+pub struct ClearTaskArgs {
+    /// Spec ID or title
+    pub spec: String,
+
+    /// Skip confirmation prompt
+    #[arg(long)]
+    pub confirm: bool,
 }
 
 #[derive(Args)]
@@ -256,6 +269,35 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
         TaskCommands::Wip => {
             let wip = cwa_core::task::get_wip_status(&pool, &project.id)?;
             output::print_wip(&wip);
+        }
+
+        TaskCommands::Clear(args) => {
+            let spec = cwa_core::spec::get_spec(&pool, &project.id, &args.spec)?;
+            let tasks = cwa_core::task::list_tasks_by_spec(&pool, &spec.id)?;
+
+            if tasks.is_empty() {
+                println!("{} No tasks to clear for spec '{}'.", "⊙".blue().bold(), spec.title.cyan());
+                return Ok(());
+            }
+
+            if !args.confirm {
+                println!(
+                    "{} This will permanently delete {} task(s) for spec '{}'. Run with {} to confirm.",
+                    "!".yellow().bold(),
+                    tasks.len(),
+                    spec.title.cyan(),
+                    "--confirm".bold()
+                );
+                return Ok(());
+            }
+
+            let count = cwa_core::task::clear_tasks_by_spec(&pool, &project.id, &args.spec)?;
+            println!(
+                "{} Cleared {} task(s) for spec '{}'.",
+                "✓".green().bold(),
+                count,
+                spec.title.cyan()
+            );
         }
     }
 

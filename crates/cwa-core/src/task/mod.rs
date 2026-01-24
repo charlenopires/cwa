@@ -198,6 +198,13 @@ pub fn generate_tasks_from_spec(
     Ok(GenerateResult { created, skipped })
 }
 
+/// Clear all tasks linked to a spec. Returns the number of deleted tasks.
+pub fn clear_tasks_by_spec(pool: &DbPool, project_id: &str, spec_id: &str) -> CwaResult<usize> {
+    let spec = crate::spec::get_spec(pool, project_id, spec_id)?;
+    let count = queries::delete_tasks_by_spec(pool, &spec.id)?;
+    Ok(count)
+}
+
 /// Initialize default Kanban columns for a project.
 pub fn init_kanban_columns(pool: &DbPool, project_id: &str) -> CwaResult<()> {
     for (i, (name, limit)) in DEFAULT_COLUMNS.iter().enumerate() {
