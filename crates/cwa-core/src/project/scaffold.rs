@@ -19,6 +19,7 @@ pub async fn create_project(target_dir: &Path, name: &str) -> CwaResult<()> {
     create_rule_templates(target_dir).await?;
     create_skill_templates(target_dir).await?;
     create_hooks_json(target_dir).await?;
+    create_docker_infrastructure(target_dir).await?;
 
     // Initialize database
     let db_path = target_dir.join(".cwa/cwa.db");
@@ -46,6 +47,8 @@ async fn create_directories(target_dir: &Path) -> CwaResult<()> {
         ".cwa/decisions",
         ".cwa/analyses",
         ".cwa/sessions",
+        ".cwa/docker",
+        ".cwa/docker/scripts",
         ".claude",
         ".claude/agents",
         ".claude/commands",
@@ -861,6 +864,154 @@ async fn create_hooks_json(target_dir: &Path) -> CwaResult<()> {
 
     let json = serde_json::to_string_pretty(&hooks)?;
     fs::write(target_dir.join(".claude/hooks.json"), json).await?;
+    Ok(())
+}
+
+/// Create Docker infrastructure files.
+async fn create_docker_infrastructure(target_dir: &Path) -> CwaResult<()> {
+    let docker_dir = target_dir.join(".cwa/docker");
+    let scripts_dir = docker_dir.join("scripts");
+
+    // Docker Compose for CWA infrastructure (Neo4j, Qdrant, Ollama)
+    let docker_compose = r#"# CWA Infrastructure - Knowledge Graph + Semantic Memory
+# Start with: docker compose -f .cwa/docker/docker-compose.yml up -d
+
+services:
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: cwa-neo4j
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-cwa_dev_2026}
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_apoc_import_file_use__neo4j__config=true
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    networks:
+      - cwa-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.2
+    container_name: cwa-qdrant
+    ports:
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - cwa-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:0.5.4
+    container_name: cwa-ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - cwa-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  cwa-network:
+    driver: bridge
+
+volumes:
+  neo4j-data:
+  neo4j-logs:
+  qdrant-data:
+  ollama-data:
+"#;
+    fs::write(docker_dir.join("docker-compose.yml"), docker_compose).await?;
+
+    // Environment template
+    let env_example = r#"# CWA Infrastructure Configuration
+NEO4J_PASSWORD=cwa_dev_2026
+NEO4J_HTTP_PORT=7474
+NEO4J_BOLT_PORT=7687
+QDRANT_HTTP_PORT=6333
+QDRANT_GRPC_PORT=6334
+OLLAMA_PORT=11434
+OLLAMA_MODEL=nomic-embed-text
+"#;
+    fs::write(docker_dir.join(".env.example"), env_example).await?;
+
+    // Qdrant initialization script
+    let init_qdrant = r#"#!/bin/bash
+# Initialize Qdrant collections for CWA
+
+QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
+
+echo "Creating CWA Qdrant collections..."
+
+# Create memories collection (768 dims for nomic-embed-text)
+curl -s -X PUT "${QDRANT_URL}/collections/cwa_memories" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "vectors": { "size": 768, "distance": "Cosine" }
+  }' && echo " - cwa_memories: created"
+
+# Create terms collection for glossary embeddings
+curl -s -X PUT "${QDRANT_URL}/collections/cwa_terms" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "vectors": { "size": 768, "distance": "Cosine" }
+  }' && echo " - cwa_terms: created"
+
+echo "Done."
+"#;
+    fs::write(scripts_dir.join("init-qdrant.sh"), init_qdrant).await?;
+
+    // Neo4j initialization script
+    let init_neo4j = r#"// CWA Knowledge Graph Schema
+// Run with: cat init-neo4j.cypher | cypher-shell -u neo4j -p <password>
+
+// Uniqueness constraints
+CREATE CONSTRAINT spec_id IF NOT EXISTS FOR (s:Spec) REQUIRE s.id IS UNIQUE;
+CREATE CONSTRAINT task_id IF NOT EXISTS FOR (t:Task) REQUIRE t.id IS UNIQUE;
+CREATE CONSTRAINT context_id IF NOT EXISTS FOR (c:BoundedContext) REQUIRE c.id IS UNIQUE;
+CREATE CONSTRAINT entity_id IF NOT EXISTS FOR (e:DomainEntity) REQUIRE e.id IS UNIQUE;
+CREATE CONSTRAINT decision_id IF NOT EXISTS FOR (d:Decision) REQUIRE d.id IS UNIQUE;
+CREATE CONSTRAINT memory_id IF NOT EXISTS FOR (m:Memory) REQUIRE m.id IS UNIQUE;
+CREATE CONSTRAINT term_id IF NOT EXISTS FOR (t:GlossaryTerm) REQUIRE t.id IS UNIQUE;
+CREATE CONSTRAINT observation_id IF NOT EXISTS FOR (o:Observation) REQUIRE o.id IS UNIQUE;
+
+// Full-text search indexes
+CREATE FULLTEXT INDEX spec_search IF NOT EXISTS FOR (s:Spec) ON EACH [s.title, s.description];
+CREATE FULLTEXT INDEX task_search IF NOT EXISTS FOR (t:Task) ON EACH [t.title, t.description];
+CREATE FULLTEXT INDEX memory_search IF NOT EXISTS FOR (m:Memory) ON EACH [m.content];
+"#;
+    fs::write(scripts_dir.join("init-neo4j.cypher"), init_neo4j).await?;
+
+    // Make init-qdrant.sh executable on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let script_path = scripts_dir.join("init-qdrant.sh");
+        let mut perms = tokio::fs::metadata(&script_path).await?.permissions();
+        perms.set_mode(0o755);
+        tokio::fs::set_permissions(&script_path, perms).await?;
+    }
+
     Ok(())
 }
 

@@ -196,6 +196,38 @@ cwa infra up
 cwa infra status
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 2A: ADDITIONAL INFRASTRUCTURE (only if project needs extra databases)
+# Append services to docker-compose.yml for PostgreSQL, Redis, MongoDB, etc.
+# SKIP THIS PHASE if project uses only client-side storage (Chrome Storage, localStorage)
+# ═══════════════════════════════════════════════════════════════════════════════
+# EXAMPLE: If project needs PostgreSQL, append to .cwa/docker/docker-compose.yml:
+# cat >> .cwa/docker/docker-compose.yml << 'INFRA'
+#
+#   postgres:
+#     image: postgres:16
+#     container_name: cwa-postgres
+#     environment:
+#       POSTGRES_DB: myapp
+#       POSTGRES_USER: postgres
+#       POSTGRES_PASSWORD: postgres
+#     ports:
+#       - "5432:5432"
+#     volumes:
+#       - postgres-data:/var/lib/postgresql/data
+#     networks:
+#       - cwa-network
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U postgres"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+#
+# volumes:
+#   postgres-data:
+# INFRA
+# docker compose -f .cwa/docker/docker-compose.yml up -d postgres
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 3: DOMAIN MODELING — Bounded Contexts
 # ═══════════════════════════════════════════════════════════════════════════════
 cwa domain context new "Session" --description "Gerenciamento do ciclo de vida de sessões de abas"
