@@ -11,6 +11,9 @@ pub enum McpCommands {
     /// Run MCP server over stdio
     Stdio,
 
+    /// Run MCP planner server for Claude Desktop
+    Planner,
+
     /// Show MCP server status
     Status,
 }
@@ -24,10 +27,14 @@ pub async fn execute(cmd: McpCommands, project_dir: &Path) -> Result<()> {
             cwa_mcp::run_stdio_server(pool).await?;
         }
 
+        McpCommands::Planner => {
+            cwa_mcp::run_planner_stdio().await?;
+        }
+
         McpCommands::Status => {
             println!("{} MCP Server Configuration", "ℹ".blue().bold());
             println!();
-            println!("  To use with Claude Code, add to .mcp.json:");
+            println!("  {} Claude Code (.mcp.json):", "▸".dimmed());
             println!();
             println!(
                 r#"  {{
@@ -35,6 +42,19 @@ pub async fn execute(cmd: McpCommands, project_dir: &Path) -> Result<()> {
       "cwa": {{
         "command": "cwa",
         "args": ["mcp", "stdio"]
+      }}
+    }}
+  }}"#
+            );
+            println!();
+            println!("  {} Claude Desktop (claude_desktop_config.json):", "▸".dimmed());
+            println!();
+            println!(
+                r#"  {{
+    "mcpServers": {{
+      "cwa-planner": {{
+        "command": "cwa",
+        "args": ["mcp", "planner"]
       }}
     }}
   }}"#

@@ -629,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "cwa"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -646,15 +646,17 @@ dependencies = [
  "indicatif",
  "reqwest",
  "serde_json",
+ "terminal_size",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "unicode-width",
  "uuid",
 ]
 
 [[package]]
 name = "cwa-codegen"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "cwa-core",
@@ -669,7 +671,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-core"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -688,7 +690,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-db"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "rusqlite",
  "rusqlite_migration",
@@ -698,7 +700,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-embedding"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -716,7 +718,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-graph"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -734,7 +736,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-mcp"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "cwa-core",
@@ -750,7 +752,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-token"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -763,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-web"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "askama",
@@ -1277,12 +1279,6 @@ dependencies = [
  "http-body",
  "pin-project-lite",
 ]
-
-[[package]]
-name = "http-range-header"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9171a2ea8a68358193d15dd5d70c1c10a2afc3e7e4c5bc92bc9f025cebd7359c"
 
 [[package]]
 name = "httparse"
@@ -2910,6 +2906,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_size"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60b8cb979cb11c32ce1603f8137b22262a9d131aaa5c37b5678025f22b8becd0"
+dependencies = [
+ "rustix",
+ "windows-sys 0.60.2",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3202,20 +3208,11 @@ checksum = "d4e6559d53cc268e5031cd8429d05415bc4cb4aefc4aa5d6cc35fbf5b924a1f8"
 dependencies = [
  "bitflags",
  "bytes",
- "futures-core",
  "futures-util",
  "http",
  "http-body",
- "http-body-util",
- "http-range-header",
- "httpdate",
  "iri-string",
- "mime",
- "mime_guess",
- "percent-encoding",
  "pin-project-lite",
- "tokio",
- "tokio-util",
  "tower 0.5.3",
  "tower-layer",
  "tower-service",

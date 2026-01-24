@@ -406,6 +406,78 @@ fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
                 "required": ["ids"]
             }),
         },
+        // Creation tools
+        Tool {
+            name: "cwa_create_context".to_string(),
+            description: "Create a new bounded context (DDD)".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Bounded context name"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Context description"
+                    }
+                },
+                "required": ["name"]
+            }),
+        },
+        Tool {
+            name: "cwa_create_spec".to_string(),
+            description: "Create a new specification with optional acceptance criteria".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Specification title"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Specification description"
+                    },
+                    "priority": {
+                        "type": "string",
+                        "description": "Priority: low, medium, high, critical (default: medium)"
+                    },
+                    "criteria": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Acceptance criteria"
+                    }
+                },
+                "required": ["title"]
+            }),
+        },
+        Tool {
+            name: "cwa_create_task".to_string(),
+            description: "Create a new task".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Task title"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Task description"
+                    },
+                    "priority": {
+                        "type": "string",
+                        "description": "Priority: low, medium, high, critical (default: medium)"
+                    },
+                    "spec_id": {
+                        "type": "string",
+                        "description": "Optional spec ID to associate with"
+                    }
+                },
+                "required": ["title"]
+            }),
+        },
         Tool {
             name: "cwa_memory_search_all".to_string(),
             description: "Search across both memories and observations using semantic similarity. Returns compact index (~50 tokens per result). Use cwa_memory_get for full details.".to_string(),
@@ -867,6 +939,83 @@ async fn handle_tool_call(
                 "success": true,
                 "id": result.id,
                 "embedding_dim": result.embedding_dim
+            })
+        }
+
+        // Creation tools
+        "cwa_create_context" => {
+            let name = args["name"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing name".to_string(),
+            })?;
+            let description = args.get("description").and_then(|v| v.as_str());
+
+            let ctx = cwa_core::domain::create_context(pool, &project.id, name, description)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({
+                "success": true,
+                "id": ctx.id,
+                "name": ctx.name
+            })
+        }
+
+        "cwa_create_spec" => {
+            let title = args["title"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing title".to_string(),
+            })?;
+            let description = args.get("description").and_then(|v| v.as_str());
+            let priority = args.get("priority").and_then(|v| v.as_str()).unwrap_or("medium");
+            let criteria: Option<Vec<String>> = args.get("criteria").and_then(|v| {
+                v.as_array().map(|arr| {
+                    arr.iter().filter_map(|item| item.as_str().map(String::from)).collect()
+                })
+            });
+
+            let spec = cwa_core::spec::create_spec_with_criteria(
+                pool,
+                &project.id,
+                title,
+                description,
+                priority,
+                criteria.as_deref(),
+            )
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({
+                "success": true,
+                "id": spec.id,
+                "title": spec.title,
+                "criteria_count": spec.acceptance_criteria.len()
+            })
+        }
+
+        "cwa_create_task" => {
+            let title = args["title"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing title".to_string(),
+            })?;
+            let description = args.get("description").and_then(|v| v.as_str());
+            let priority = args.get("priority").and_then(|v| v.as_str()).unwrap_or("medium");
+            let spec_id = args.get("spec_id").and_then(|v| v.as_str());
+
+            let task = cwa_core::task::create_task(pool, &project.id, title, description, spec_id, priority)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({
+                "success": true,
+                "id": task.id,
+                "title": task.title
             })
         }
 

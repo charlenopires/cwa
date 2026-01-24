@@ -9,7 +9,7 @@ use std::sync::Arc;
 #[derive(Args)]
 pub struct ServeArgs {
     /// Port to listen on
-    #[arg(long, default_value = "3000")]
+    #[arg(long, default_value = "3030")]
     pub port: u16,
 
     /// Host to bind to

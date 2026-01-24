@@ -27,31 +27,41 @@ CWA solves this by creating a **living project knowledge base** that automatical
 - **Impact Awareness** - The knowledge graph shows how changing a spec affects tasks, contexts, and related decisions
 - **Token Efficiency** - CLAUDE.md is auto-generated with only relevant context, staying within token budgets
 
-Without CWA, you repeat context in every prompt. With CWA, Claude already knows your domain, your decisions, your current task, and what matters right now.
+Without CWA, you repeat context in every prompt. With CWA, you describe your idea once and Claude orchestrates everything — domain modeling, specifications, task breakdown, and artifact generation — through MCP tools, automatically.
 
 ## How It Works
 
 ```
-User Intent ─→ Specification ─→ Tasks ─→ Implementation ─→ Review ─→ Done
-                     │              │            │               │
-                     ▼              ▼            ▼               ▼
-                  Domain         Kanban      Codegen         Decisions
-                  Model          Board       Artifacts        (ADRs)
-                     │              │            │               │
-                     └──────────────┴────────────┴───────────────┘
-                                         │
-                              ┌──────────┼──────────┐
-                              ▼          ▼          ▼
-                           SQLite     Neo4j     Qdrant
-                          (source    (graph    (vector
-                          of truth)  queries)  search)
-                                         │
-                                         ▼
-                                  CLAUDE.md + MCP
-                                  (context for Claude)
+                    ┌───────────────────────────────┐
+                    │    User Prompt to Claude       │
+                    │    "I want to build a..."      │
+                    └───────────────┬───────────────┘
+                                    │
+                                    ▼
+                    ┌───────────────────────────────┐
+                    │      Claude Code + MCP         │
+                    │      (cwa mcp stdio)           │
+                    └───────────────┬───────────────┘
+                                    │
+           ┌────────────────────────┼────────────────────────┐
+           ▼                        ▼                        ▼
+    Specifications            Domain Model              Tasks
+    (with criteria)        (bounded contexts)       (Kanban board)
+           │                        │                        │
+           └────────────────────────┼────────────────────────┘
+                                    │
+                         ┌──────────┼──────────┐
+                         ▼          ▼          ▼
+                      SQLite     Neo4j     Qdrant
+                     (source    (graph    (vector
+                     of truth)  queries)  search)
+                                    │
+                                    ▼
+                         CLAUDE.md + .claude/
+                        (persistent context)
 ```
 
-**Data flows in one direction**: your domain knowledge enters through specs, tasks, and decisions. CWA stores it in SQLite, syncs relationships to Neo4j, and indexes semantics in Qdrant. Claude Code accesses everything through MCP tools or the auto-generated CLAUDE.md.
+**You describe, Claude orchestrates**: your project idea enters as a natural language prompt. Claude Code uses MCP tools to create specs, model the domain, generate tasks, and produce artifacts. CWA stores everything in SQLite, syncs relationships to Neo4j, and indexes semantics in Qdrant. All context persists across sessions.
 
 ## Installation
 
@@ -137,66 +147,96 @@ Neo4j and Qdrant are **derived stores** - they're populated by syncing from SQLi
 - **Fast** - Native Rust implementation, counts thousands of tokens in microseconds
 - **Budget management** - Critical for keeping CLAUDE.md and context files within model limits
 
-## Quick Start
+## Getting Started
+
+### 1. Install and Initialize
 
 ```bash
-# Initialize a new project
 cwa init my-project
 cd my-project
-
-# Create your first specification with acceptance criteria
-cwa spec new "User Authentication" --description "JWT-based auth system" --priority high \
-  -c "User can register with email and password" \
-  -c "User can login with valid credentials" \
-  -c "User receives error on invalid credentials" \
-  -c "Session expires after 24 hours"
-
-# Automatically generate tasks from the spec's criteria
-cwa task generate "User Authentication"
-
-# View the Kanban board
-cwa task board
-
-# Move a task through the workflow
-cwa task move <task-id> todo
-cwa task move <task-id> in_progress
-
-# Check WIP limits
-cwa task wip
-
-# Start the web dashboard
-cwa serve
-# Open http://localhost:3000 in your browser
 ```
 
-### With Knowledge Graph & Semantic Memory
+This creates:
+- `.mcp.json` — MCP server configuration (auto-detected by Claude Code)
+- `.claude/` — Agents, skills, commands, rules, and hooks
+- `CLAUDE.md` — Project context file
+- `.cwa/cwa.db` — SQLite database
+
+### 2. Open in Claude Code
+
+Open the project directory in Claude Code. The `.mcp.json` file is detected automatically, connecting the CWA MCP server with 18 tools and 5 resources.
+
+### 3. Describe Your Project
+
+Tell Claude Code what you want to build:
+
+> "I want to build a recipe sharing app where users can create accounts,
+> save recipes with ingredients and steps, search by ingredient, and
+> leave ratings. Use Rust with Axum for the backend and SQLite for storage."
+
+### 4. Claude Code Does the Rest
+
+Through MCP tools, Claude Code automatically:
+
+1. **Discovers the domain** — Creates bounded contexts (Recipes, Users, Search, Ratings)
+2. **Writes specifications** — Each feature gets acceptance criteria
+3. **Generates tasks** — Specs are broken into implementable work items
+4. **Populates the board** — Tasks appear on the Kanban board with WIP limits
+5. **Records decisions** — Architectural choices are stored for future sessions
+6. **Generates artifacts** — Expert agents, skills, and CLAUDE.md are created
+
+You can verify the result:
 
 ```bash
-# Start Docker infrastructure
+cwa task board          # See populated Kanban board
+cwa spec list           # See specifications with criteria
+cwa domain context list # See bounded contexts
+```
+
+### 5. Start Building
+
+In the same or a future Claude Code session, say:
+
+> "What should I work on next?"
+
+Claude Code reads the project state via MCP, picks a task respecting WIP limits, loads the relevant spec, and begins implementation with TDD.
+
+### With Knowledge Graph & Semantic Memory (Optional)
+
+```bash
+# Start Docker infrastructure for graph and embedding features
 cwa infra up
-# This starts Neo4j, Qdrant, and Ollama with nomic-embed-text
 
 # Check services are healthy
 cwa infra status
 
-# Add domain knowledge
-cwa domain context new "Auth"
-cwa domain context new "Payments"
-
 # Sync to Knowledge Graph
 cwa graph sync
-
-# Explore relationships
-cwa graph impact context <context-id>
-cwa graph explore context <context-id> --depth 3
-
-# Add semantic memories
-cwa memory add "User prefers RS256 JWT tokens" --type decision
-cwa memory add "All payments use Stripe API" --type fact
 
 # Semantic search
 cwa memory search "authentication tokens"
 ```
+
+## Two Approaches
+
+CWA supports two complementary workflows:
+
+### Prompt-First (Recommended)
+
+Describe what you want in natural language. Claude Code uses MCP tools to run the correct CWA commands in the right order. Best for:
+- Starting new projects
+- Adding features
+- Day-to-day development
+
+### CLI-Direct
+
+Run `cwa` commands manually for full control. Best for:
+- Fine-tuning specs or tasks
+- CI/CD scripts
+- Debugging project state
+- Learning what CWA does under the hood
+
+All CLI commands are documented in the [CLI Reference](#cli-reference) section below.
 
 ## CLI Reference
 
@@ -762,10 +802,56 @@ Add to your `.mcp.json` (auto-generated by `cwa init`):
 }
 ```
 
+### Claude Desktop Integration (Planning)
+
+For project planning before implementation, configure the planner in Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "cwa-planner": {
+      "command": "cwa",
+      "args": ["mcp", "planner"]
+    }
+  }
+}
+```
+
+The `cwa_plan_software` tool takes your idea and generates a structured planning document with:
+1. Clarifying questions for Claude to ask
+2. Bounded contexts (DDD)
+3. Specifications with acceptance criteria
+4. Domain model with entities and invariants
+5. Architectural decisions
+6. Task breakdown
+7. **Ordered CLI bootstrap commands** ready to execute
+
+**Example flow:**
+
+> You: "I want to build a recipe app with user accounts, recipe sharing, and ratings"
+
+Claude Desktop asks clarifying questions about tech stack, scale, and auth method, then generates a planning document with concrete commands:
+
+```bash
+cwa init "recipe-app"
+cwa domain context new "Recipes" --description "Recipe management and search"
+cwa domain context new "Users" --description "User accounts and profiles"
+cwa spec new "User Registration" -c "User can sign up with email" -c "Email verification required"
+cwa spec new "Recipe CRUD" -c "User can create recipe" -c "User can search by ingredient"
+cwa task generate "User Registration"
+cwa task generate "Recipe CRUD"
+cwa codegen all
+```
+
+Take these commands to Claude Code for execution, or let Claude Code call the MCP tools (`cwa_create_context`, `cwa_create_spec`, `cwa_generate_tasks`) directly.
+
 ### MCP Tools Reference
 
 | Tool | Phase | Description |
 |------|-------|-------------|
+| `cwa_create_context` | Planning, Design | Create a new bounded context |
+| `cwa_create_spec` | Planning | Create a spec with acceptance criteria |
+| `cwa_create_task` | Planning | Create a new task |
 | `cwa_get_current_task` | Implementation | Get the current in-progress task |
 | `cwa_get_spec` | Planning, Implementation, Review | Get specification with acceptance criteria |
 | `cwa_get_context_summary` | Planning | Compact project state overview |
@@ -1124,7 +1210,59 @@ cwa tokens optimize --budget 8000
 # Ensures generated context stays within Claude's effective window
 ```
 
-## End-to-End Workflow Example
+## MCP-Driven Workflow Example
+
+### Session 1: Project Bootstrap
+
+**You say to Claude Code:**
+
+> "I'm building a subscription billing platform for a SaaS startup.
+> Two developers, different timezones. We need user management,
+> subscription plans (free/pro/enterprise), Stripe payments,
+> and email receipts."
+
+**Claude Code (via MCP) automatically:**
+1. Creates bounded contexts: Subscriptions, Payments, Accounts
+2. Creates specs with acceptance criteria for each feature
+3. Generates tasks from specs, populating the Kanban board
+4. Records initial design decisions
+5. Generates Claude Code artifacts (agents, skills, CLAUDE.md)
+
+**You see:**
+- Kanban board populated with tasks
+- `.claude/agents/` with expert agents per context
+- `CLAUDE.md` with full project context
+- Ready to start implementing
+
+### Session 2: Continue Development
+
+**You say to Claude Code:**
+
+> "What should I work on next?"
+
+**Claude Code (via MCP) automatically:**
+1. Reads project state via `cwa_get_context_summary`
+2. Checks WIP limits via `cwa_get_current_task`
+3. Suggests the highest-priority unblocked task
+4. Loads the spec with acceptance criteria
+5. Begins TDD implementation
+
+### Session 3: Memory Across Sessions
+
+**You say to Claude Code:**
+
+> "Why did we choose Stripe over PayPal?"
+
+**Claude Code (via MCP) automatically:**
+1. Searches memory via `cwa_memory_semantic_search`
+2. Finds the decision recorded in Session 1
+3. Returns the rationale with full context
+
+---
+
+## Manual CLI Workflow (Reference)
+
+For users who prefer direct CLI control, scripting, or CI/CD integration:
 
 ```bash
 # 1. Create and initialize project

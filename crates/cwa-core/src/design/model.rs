@@ -8,15 +8,25 @@ use serde::{Deserialize, Serialize};
 /// Complete design system extracted from an image.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignSystem {
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
     pub project_id: String,
+    #[serde(default)]
     pub source_url: String,
+    #[serde(default)]
     pub colors: ColorPalette,
+    #[serde(default)]
     pub typography: Typography,
+    #[serde(default)]
     pub spacing: Vec<SpacingToken>,
+    #[serde(default)]
     pub border_radius: Vec<RadiusToken>,
+    #[serde(default)]
     pub shadows: Vec<ShadowToken>,
+    #[serde(default)]
     pub breakpoints: Vec<BreakpointToken>,
+    #[serde(default)]
     pub components: Vec<IdentifiedComponent>,
     #[serde(default)]
     pub raw_analysis: String,

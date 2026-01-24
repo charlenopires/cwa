@@ -211,6 +211,9 @@ The MCP server is the **primary runtime interface** between Claude Code and CWA.
 | `cwa_get_spec` | Spec with acceptance criteria | specifier, implementer, reviewer, tester |
 | `cwa_get_next_steps` | Suggested next actions | orchestrator |
 | `cwa_generate_tasks` | Create tasks from spec criteria | specifier, /create-spec |
+| `cwa_create_context` | Create a bounded context | architect, specifier |
+| `cwa_create_spec` | Create a spec with criteria | specifier, orchestrator |
+| `cwa_create_task` | Create a task | specifier, orchestrator |
 
 **Implementation & Workflow:**
 | Tool | Description | Used By |

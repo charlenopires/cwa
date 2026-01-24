@@ -245,6 +245,17 @@ pub fn update_spec_status(pool: &DbPool, id: &str, status: &str) -> DbResult<()>
     })
 }
 
+/// Delete all specs for a project. Returns the number of deleted specs.
+pub fn delete_all_specs(pool: &DbPool, project_id: &str) -> DbResult<usize> {
+    pool.with_conn(|conn| {
+        let count = conn.execute(
+            "DELETE FROM specs WHERE project_id = ?1",
+            params![project_id],
+        )?;
+        Ok(count)
+    })
+}
+
 /// Update spec acceptance criteria.
 pub fn update_acceptance_criteria(pool: &DbPool, id: &str, criteria_json: &str) -> DbResult<()> {
     pool.with_conn(|conn| {

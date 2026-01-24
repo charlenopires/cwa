@@ -20,6 +20,8 @@ cwa-mcp = { workspace = true }
 cwa-web = { workspace = true }
 clap = { workspace = true }
 colored = { workspace = true }
+terminal_size = { workspace = true }
+unicode-width = { workspace = true }
 indicatif = { workspace = true }
 dialoguer = { workspace = true }
 tokio = { workspace = true }

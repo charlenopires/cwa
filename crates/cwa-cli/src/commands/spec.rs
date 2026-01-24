@@ -29,6 +29,9 @@ pub enum SpecCommands {
 
     /// Archive a specification
     Archive(ArchiveArgs),
+
+    /// Clear all specifications
+    Clear(ClearArgs),
 }
 
 #[derive(Args)]
@@ -96,6 +99,13 @@ pub struct ArchiveArgs {
     /// Reason for archiving
     #[arg(long)]
     pub reason: Option<String>,
+}
+
+#[derive(Args)]
+pub struct ClearArgs {
+    /// Skip confirmation prompt
+    #[arg(long)]
+    pub confirm: bool,
 }
 
 pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
@@ -251,6 +261,30 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
                 "{} Archived spec: {}",
                 "✓".green().bold(),
                 args.spec_id.dimmed()
+            );
+        }
+
+        SpecCommands::Clear(args) => {
+            if !args.confirm {
+                let specs = cwa_core::spec::list_specs(&pool, &project.id)?;
+                if specs.is_empty() {
+                    println!("{} No specs to clear.", "⊙".blue().bold());
+                    return Ok(());
+                }
+                println!(
+                    "{} This will permanently delete {} spec(s). Run with {} to confirm.",
+                    "!".yellow().bold(),
+                    specs.len(),
+                    "--confirm".bold()
+                );
+                return Ok(());
+            }
+
+            let count = cwa_core::spec::clear_specs(&pool, &project.id)?;
+            println!(
+                "{} Cleared {} spec(s).",
+                "✓".green().bold(),
+                count
             );
         }
     }

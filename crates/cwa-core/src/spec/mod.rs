@@ -99,6 +99,12 @@ pub fn archive_spec(pool: &DbPool, id: &str) -> CwaResult<()> {
     update_status(pool, id, "archived")
 }
 
+/// Clear all specs for a project. Returns the number of deleted specs.
+pub fn clear_specs(pool: &DbPool, project_id: &str) -> CwaResult<usize> {
+    let count = queries::delete_all_specs(pool, project_id)?;
+    Ok(count)
+}
+
 /// Add acceptance criteria to an existing spec (appends to existing list).
 pub fn add_acceptance_criteria(
     pool: &DbPool,

@@ -14,7 +14,6 @@ use cwa_db::DbPool;
 use std::sync::Arc;
 use tower_http::{
     cors::{Any, CorsLayer},
-    services::ServeDir,
     trace::TraceLayer,
 };
 
@@ -51,7 +50,6 @@ pub fn create_router(state: AppState) -> Router {
 
     // HTMX-driven HTML routes for Kanban board
     let board_routes = Router::new()
-        .route("/", get(routes::board_html::index))
         .route("/boards", get(routes::board_html::list_boards))
         .route("/boards/{id}", get(routes::board_html::get_board))
         .route("/cards", post(routes::board_html::create_card))
@@ -60,10 +58,10 @@ pub fn create_router(state: AppState) -> Router {
         .with_state(state.clone());
 
     Router::new()
+        .route("/", get(routes::dashboard::index))
         .nest("/api", api_routes)
         .merge(board_routes)
         .route("/ws", get(websocket::ws_handler))
-        .fallback_service(ServeDir::new("assets/web").append_index_html_on_directories(true))
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)

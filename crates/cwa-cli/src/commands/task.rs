@@ -12,6 +12,9 @@ pub enum TaskCommands {
     /// Create a new task
     New(NewTaskArgs),
 
+    /// List all tasks
+    List,
+
     /// Generate tasks from a spec's acceptance criteria
     Generate(GenerateTaskArgs),
 
@@ -238,6 +241,11 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                 args.task_id.dimmed(),
                 args.status.cyan()
             );
+        }
+
+        TaskCommands::List => {
+            let tasks = cwa_core::task::list_tasks(&pool, &project.id)?;
+            output::print_tasks_table(&tasks);
         }
 
         TaskCommands::Board => {
