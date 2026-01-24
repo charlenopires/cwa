@@ -589,13 +589,167 @@ cwa serve [--port <port>]          # Start web server (default: 3000)
 cwa mcp stdio                     # Run MCP server over stdio
 ```
 
-## MCP Integration
+## Claude Code Integration
 
-CWA provides a Model Context Protocol server for Claude Code integration.
+CWA is designed as a **companion system for Claude Code**, providing persistent project intelligence across sessions. The integration works through three channels:
 
-### Configuration
+1. **MCP Server** - Real-time tools and resources Claude Code calls during sessions
+2. **Generated Artifacts** - `.claude/` directory with agents, skills, commands, rules, and hooks
+3. **CLAUDE.md** - Auto-generated context file loaded at session start
 
-Add to your `.mcp.json`:
+### How Claude Code Uses CWA in Each Phase
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Development Lifecycle                             │
+├──────────┬──────────┬──────────────┬──────────┬────────────────────────┤
+│ Planning │  Design  │Implementation│  Review  │   Memory & Learning    │
+│          │          │              │          │                        │
+│ Specs    │ Domain   │ Agents       │ Hooks    │ Observations           │
+│ from-    │ Contexts │ Skills       │ Spec     │ Semantic Search        │
+│ prompt   │ Glossary │ Commands     │ Criteria │ Decision Records       │
+│          │ Graph    │ Rules        │ WIP      │ Timeline               │
+│          │          │              │ Limits   │ Summaries              │
+├──────────┴──────────┴──────────────┴──────────┴────────────────────────┤
+│                              ↕ MCP ↕                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│                    Claude Code Session                                   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Phase 1: Planning & Specification
+
+Claude Code reads the project state and helps define what to build.
+
+```
+Claude Code                              CWA
+    │                                     │
+    ├── reads project://current-spec ────→│ "What are we building?"
+    ├── reads project://domain-model ────→│ "What's the domain?"
+    ├── calls cwa_get_context_summary ───→│ "What's the current state?"
+    ├── calls cwa_search_memory ─────────→│ "Any past decisions on this?"
+    │                                     │
+    ├── User describes feature ──────────→│
+    ├── calls cwa spec new / from-prompt →│ Creates spec with criteria
+    ├── calls cwa_generate_tasks ────────→│ Auto-creates tasks from criteria
+    └── calls cwa_add_decision ──────────→│ Records "why" for future sessions
+```
+
+**What Claude Code gains**: Full project context without re-explanation. Past decisions, domain model, and current work state are immediately available.
+
+#### Phase 2: Domain Modeling
+
+Claude Code helps discover and refine the domain model, which drives code generation.
+
+```
+Claude Code                              CWA
+    │                                     │
+    ├── calls cwa_get_domain_model ──────→│ Load current contexts
+    ├── creates bounded contexts ────────→│ domain context new
+    ├── defines entities/invariants ─────→│ Stored in SQLite
+    ├── calls cwa_graph_sync ────────────→│ Syncs to Neo4j
+    └── calls cwa_graph_impact ──────────→│ "What does changing this affect?"
+```
+
+**What Claude Code gains**: Bounded contexts become generated expert agents. Invariants become validation hooks. The glossary enforces ubiquitous language.
+
+#### Phase 3: Implementation
+
+Claude Code uses the generated agents, skills, and task context to write code.
+
+```
+Claude Code                              CWA
+    │                                     │
+    ├── /project:next-task ──────────────→│ Picks task, checks WIP limits
+    ├── calls cwa_get_current_task ──────→│ Loads task details
+    ├── calls cwa_get_spec ──────────────→│ Loads acceptance criteria
+    │                                     │
+    │  ┌─ Agents active: ─────────────────┤
+    │  │  implementer.md (TDD flow)       │ Reads spec before coding
+    │  │  tester.md (BDD from criteria)   │ Generates tests first
+    │  │  [context]-expert.md             │ Domain-specific guidance
+    │  └──────────────────────────────────┤
+    │                                     │
+    │  ┌─ Rules enforced: ────────────────┤
+    │  │  workflow.md (spec before code)  │ Prevents skipping phases
+    │  │  domain.md (DDD principles)     │ Ubiquitous language
+    │  │  tests.md (coverage gates)      │ Test requirements
+    │  └──────────────────────────────────┤
+    │                                     │
+    ├── calls cwa_observe ───────────────→│ Records bugfix/feature/discovery
+    ├── calls cwa_update_task_status ────→│ Moves task to review
+    └── calls cwa_memory_add ────────────→│ Stores patterns/decisions
+```
+
+**What Claude Code gains**: Structured workflow enforcement. The implementer agent reads the spec, the tester agent writes tests from acceptance criteria, and the orchestrator ensures WIP limits are respected.
+
+#### Phase 4: Review & Validation
+
+Claude Code validates work against spec criteria and domain invariants.
+
+```
+Claude Code                              CWA
+    │                                     │
+    ├── /project:review-code ────────────→│ Triggers review workflow
+    ├── calls cwa_get_spec ──────────────→│ Loads acceptance criteria
+    │                                     │
+    │  ┌─ Hooks fire: ───────────────────┤
+    │  │  pre-commit: wip check          │ Enforces kanban limits
+    │  │  pre-commit: invariant check    │ Domain rule validation
+    │  │  post-test: task advancement    │ Reminds to move task
+    │  └──────────────────────────────────┤
+    │                                     │
+    ├── reviewer.md validates criteria ──→│ Each criterion checked
+    └── calls cwa_update_task_status ────→│ done (or back to in_progress)
+```
+
+**What Claude Code gains**: Automated validation against acceptance criteria. Hooks prevent bypassing workflow rules. The reviewer agent knows exactly what to check.
+
+#### Phase 5: Memory & Continuous Learning
+
+Claude Code builds persistent project memory that survives across sessions.
+
+```
+Claude Code                              CWA
+    │                                     │
+    ├── calls cwa_observe ───────────────→│ Structured: bugfix/feature/decision/...
+    ├── calls cwa_memory_add ────────────→│ Facts, preferences, patterns
+    ├── calls cwa_add_decision ──────────→│ ADRs with rationale
+    │                                     │
+    │  Next session starts:               │
+    ├── reads CLAUDE.md ─────────────────→│ Recent observations (0.7+ confidence)
+    ├── calls cwa_memory_timeline ───────→│ Compact timeline (~50 tok/entry)
+    ├── calls cwa_memory_get ────────────→│ Full details (~500 tok/entry)
+    └── calls cwa_memory_semantic_search →│ "Why did we choose X?"
+```
+
+**What Claude Code gains**: Progressive disclosure memory. Timeline gives a quick overview; full details are loaded on demand. Confidence decay automatically deprecates stale knowledge. Summaries compress old observations.
+
+#### Phase 6: Context Regeneration
+
+CWA keeps all artifacts in sync and within token budget.
+
+```
+Claude Code                              CWA
+    │                                     │
+    ├── /project:sync-context ───────────→│ Triggers full regeneration
+    │                                     │
+    │  CWA regenerates:                   │
+    │  ├── CLAUDE.md ─────────────────────│ Domain, specs, decisions, work state
+    │  ├── agents/ ───────────────────────│ Expert agent per context
+    │  ├── skills/ ───────────────────────│ Skill per approved spec
+    │  ├── hooks.json ────────────────────│ Invariants as validation hooks
+    │  └── design-system.md ──────────────│ Design tokens from screenshots
+    │                                     │
+    ├── calls cwa tokens optimize ───────→│ Ensures within budget
+    └── calls cwa_graph_sync ────────────→│ Updates knowledge graph
+```
+
+**What Claude Code gains**: All generated artifacts stay current with the domain model. Token optimization ensures context fits within the model window.
+
+### MCP Configuration
+
+Add to your `.mcp.json` (auto-generated by `cwa init`):
 
 ```json
 {
@@ -608,30 +762,30 @@ Add to your `.mcp.json`:
 }
 ```
 
-### Available Tools
+### MCP Tools Reference
 
-| Tool | Description |
-|------|-------------|
-| `cwa_get_current_task` | Get the current in-progress task |
-| `cwa_get_spec` | Get a specification by ID or title |
-| `cwa_get_context_summary` | Get compact project summary |
-| `cwa_get_domain_model` | Get bounded contexts and objects |
-| `cwa_update_task_status` | Move a task to a new status |
-| `cwa_add_decision` | Record an architectural decision |
-| `cwa_get_next_steps` | Get suggested next actions |
-| `cwa_generate_tasks` | Generate tasks from spec acceptance criteria |
-| `cwa_search_memory` | Search project memory (text) |
-| `cwa_graph_query` | Execute Cypher query on knowledge graph |
-| `cwa_graph_impact` | Analyze impact of entity changes |
-| `cwa_graph_sync` | Trigger SQLite to Neo4j sync |
-| `cwa_memory_semantic_search` | Vector similarity search |
-| `cwa_memory_add` | Store memory with embedding |
-| `cwa_observe` | Record structured observation (progressive disclosure) |
-| `cwa_memory_timeline` | Compact observation timeline (~50 tokens/entry) |
-| `cwa_memory_get` | Full observation details by IDs (~500 tokens/entry) |
-| `cwa_memory_search_all` | Search across memories + observations |
+| Tool | Phase | Description |
+|------|-------|-------------|
+| `cwa_get_current_task` | Implementation | Get the current in-progress task |
+| `cwa_get_spec` | Planning, Implementation, Review | Get specification with acceptance criteria |
+| `cwa_get_context_summary` | Planning | Compact project state overview |
+| `cwa_get_domain_model` | Design | Bounded contexts, entities, invariants |
+| `cwa_update_task_status` | Implementation, Review | Move task through workflow (enforces WIP) |
+| `cwa_add_decision` | All phases | Record architectural decision with rationale |
+| `cwa_get_next_steps` | Planning | Suggested next actions based on state |
+| `cwa_generate_tasks` | Planning | Auto-create tasks from spec criteria |
+| `cwa_search_memory` | All phases | Text search project memory |
+| `cwa_graph_query` | Design | Execute Cypher on knowledge graph |
+| `cwa_graph_impact` | Design, Planning | Analyze impact of entity changes |
+| `cwa_graph_sync` | Design | Trigger SQLite to Neo4j sync |
+| `cwa_memory_semantic_search` | All phases | Vector similarity search |
+| `cwa_memory_add` | Memory | Store memory with embedding |
+| `cwa_observe` | Implementation, Memory | Record structured observation |
+| `cwa_memory_timeline` | Memory | Compact timeline (~50 tokens/entry) |
+| `cwa_memory_get` | Memory | Full observation details (~500 tokens/entry) |
+| `cwa_memory_search_all` | All phases | Search across all memory types |
 
-### Available Resources
+### MCP Resources
 
 | URI | Description |
 |-----|-------------|
@@ -640,6 +794,62 @@ Add to your `.mcp.json`:
 | `project://domain-model` | DDD model with contexts |
 | `project://kanban-board` | Current board state |
 | `project://decisions` | Architectural decision log |
+
+### Generated Artifacts (`.claude/` Directory)
+
+CWA generates a complete Claude Code configuration directory:
+
+| Artifact | Source | Claude Code Feature |
+|----------|--------|---------------------|
+| `agents/*.md` | Bounded contexts | [Agents](https://docs.anthropic.com/claude-code/agents) - domain expert personas |
+| `skills/*/SKILL.md` | Approved specs | [Skills](https://docs.anthropic.com/claude-code/skills) - repeatable workflows |
+| `commands/*.md` | Built-in (8) | [Commands](https://docs.anthropic.com/claude-code/commands) - slash commands |
+| `rules/*.md` | Built-in (5) | [Rules](https://docs.anthropic.com/claude-code/rules) - code constraints |
+| `hooks.json` | Domain invariants | [Hooks](https://docs.anthropic.com/claude-code/hooks) - event-driven validation |
+| `design-system.md` | UI screenshots | Design tokens for consistent UI |
+
+#### Built-in Agents (8)
+
+| Agent | Role | Key MCP Tools Used |
+|-------|------|--------------------|
+| `analyst.md` | Requirements research | `cwa_search_memory`, `cwa_memory_add` |
+| `architect.md` | DDD architecture decisions | `cwa_get_domain_model`, `cwa_add_decision`, `cwa_graph_query` |
+| `specifier.md` | Spec-driven development | `cwa_get_spec`, `cwa_generate_tasks` |
+| `implementer.md` | TDD implementation | `cwa_get_current_task`, `cwa_get_spec`, `cwa_observe`, `cwa_update_task_status` |
+| `reviewer.md` | Code review vs. criteria | `cwa_get_current_task`, `cwa_get_spec`, `cwa_update_task_status` |
+| `orchestrator.md` | Workflow coordination | All tools - central hub for workflow enforcement |
+| `tester.md` | BDD test generation | `cwa_get_spec`, `cwa_observe` |
+| `documenter.md` | Docs & ADR maintenance | `cwa_add_decision`, `cwa_memory_add`, codegen tools |
+
+#### Built-in Skills (2)
+
+| Skill | Purpose | Workflow |
+|-------|---------|----------|
+| `workflow-kickoff` | Feature idea → full workflow | Create spec → generate tasks → generate skill → update CLAUDE.md |
+| `refactor-safe` | Safe refactoring with tests | Record decision → run tests → refactor → verify → move to review |
+
+#### Built-in Commands (8)
+
+| Command | Purpose |
+|---------|---------|
+| `/project:create-spec` | Create specification with acceptance criteria |
+| `/project:implement-task` | Load current task + spec, implement, advance |
+| `/project:session-summary` | Generate session summary, capture insights |
+| `/project:next-task` | Pick next task respecting WIP limits |
+| `/project:review-code` | Review against acceptance criteria |
+| `/project:domain-discover` | Interactive domain discovery |
+| `/project:sync-context` | Regenerate all artifacts |
+| `/project:status` | Full project state dashboard |
+
+#### Built-in Rules (5)
+
+| Rule | Enforces |
+|------|----------|
+| `workflow.md` | Spec before code, WIP limits, decision tracking |
+| `domain.md` | DDD principles, ubiquitous language, aggregate boundaries |
+| `tests.md` | AAA pattern, coverage gates, test naming |
+| `api.md` | REST conventions, input validation, security |
+| `memory.md` | When and what to record in memory |
 
 ## Web Dashboard
 

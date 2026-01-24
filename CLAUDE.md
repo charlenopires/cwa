@@ -2,7 +2,9 @@
 
 ## Project Overview
 
-CWA is a Rust CLI tool for development workflow orchestration integrated with Claude Code. It combines:
+CWA is a Rust CLI tool that provides **persistent project intelligence for Claude Code**. It bridges the gap between AI-assisted development sessions by maintaining structured context (specs, domain models, decisions, tasks) that Claude Code accesses through MCP, generated artifacts, and auto-regenerated CLAUDE.md files.
+
+### Core Capabilities
 - **Spec Driven Development (SDD)** - Specification management with acceptance criteria
 - **Domain Driven Design (DDD)** - Domain modeling with bounded contexts and ubiquitous language
 - **Kanban** - Task management with WIP limits and workflow enforcement
@@ -10,6 +12,53 @@ CWA is a Rust CLI tool for development workflow orchestration integrated with Cl
 - **Semantic Memory** - Vector embeddings via Ollama + Qdrant for intelligent recall
 - **Code Generation** - Generates Claude Code agents, skills, hooks, and CLAUDE.md
 - **Token Analysis** - Context budget management and optimization
+
+## Claude Code Integration Model
+
+CWA integrates with Claude Code through three channels, each serving a different purpose:
+
+### Channel 1: MCP Server (Real-time)
+The MCP server (`cwa mcp stdio`) gives Claude Code live access to project state during sessions.
+- **Tools**: 18 callable functions for reading/writing project data
+- **Resources**: 5 URIs for quick context loading (constitution, specs, domain, board, decisions)
+- **Progressive disclosure**: Timeline gives ~50 tokens/observation; full details are ~500 tokens each
+
+### Channel 2: Generated Artifacts (Session Start)
+The `.claude/` directory is read by Claude Code at session initialization:
+- **Agents** (8 built-in + 1 per bounded context) - Personas with domain expertise and MCP tool access
+- **Skills** (2 built-in + 1 per approved spec) - Repeatable multi-step workflows
+- **Commands** (8 built-in) - Slash commands for common workflows
+- **Rules** (5 built-in) - Constraints enforced during code generation
+- **Hooks** (3 built-in + generated from invariants) - Event-driven validation
+
+### Channel 3: CLAUDE.md (Session Context)
+Auto-regenerated file (`cwa codegen claude-md`) containing:
+- Domain model with entities and invariants
+- Active specs with acceptance criteria
+- Key decisions (top 10 accepted ADRs)
+- Current work state (in-progress tasks)
+- Recent high-confidence observations
+- Last session summary
+
+### Integration Flow by Development Phase
+
+| Phase | Claude Code Actions | CWA Provides |
+|-------|--------------------|--------------|
+| **Planning** | Reads context, creates specs, generates tasks | `cwa_get_context_summary`, `cwa_search_memory`, `project://current-spec` |
+| **Design** | Models domain, discovers contexts, defines invariants | `cwa_get_domain_model`, `cwa_graph_impact`, `cwa_graph_sync` |
+| **Implementation** | Uses agents/skills, follows rules, writes code | `cwa_get_current_task`, `cwa_get_spec`, agents, skills, rules |
+| **Review** | Validates against criteria, checks invariants | `cwa_get_spec`, hooks.json, reviewer agent |
+| **Memory** | Records observations, decisions, patterns | `cwa_observe`, `cwa_memory_add`, `cwa_add_decision` |
+| **Sync** | Regenerates all artifacts | `cwa codegen all`, `cwa tokens optimize` |
+
+### Key Architectural Decisions for Contributors
+
+1. **MCP tools are the primary interface** - Agents, skills, and commands all call MCP tools internally
+2. **SQLite is source of truth** - Neo4j and Qdrant are derived stores, rebuildable from SQLite
+3. **Progressive disclosure for memory** - Timeline first (cheap), then full details (expensive)
+4. **WIP limits enforced by MCP** - `cwa_update_task_status` rejects moves that exceed limits
+5. **Token budget awareness** - CLAUDE.md and artifacts are optimized to fit within model context windows
+6. **Confidence lifecycle** - Observations start at 0.8, decay over time, get removed below threshold
 
 ## Architecture
 
@@ -151,34 +200,52 @@ cwa mcp stdio                            # Run MCP server
 
 ## MCP Integration
 
-### Tools
-| Tool | Description |
-|------|-------------|
-| `cwa_get_current_task` | Get in-progress task |
-| `cwa_get_spec` | Get spec by ID or title |
-| `cwa_get_context_summary` | Compact project summary |
-| `cwa_get_domain_model` | Bounded contexts and objects |
-| `cwa_update_task_status` | Move task to new status |
-| `cwa_add_decision` | Record architectural decision |
-| `cwa_get_next_steps` | Suggested next actions |
-| `cwa_generate_tasks` | Generate tasks from spec criteria |
-| `cwa_search_memory` | Search project memory |
-| `cwa_graph_query` | Execute Cypher query on graph |
-| `cwa_graph_impact` | Analyze entity impact |
-| `cwa_graph_sync` | Trigger SQLite -> Neo4j sync |
-| `cwa_memory_semantic_search` | Vector similarity search |
-| `cwa_memory_add` | Store memory with embedding |
-| `cwa_observe` | Record structured observation (bugfix/feature/discovery/etc) |
-| `cwa_memory_timeline` | Compact timeline of observations (~50 tokens/entry) |
-| `cwa_memory_get` | Full observation details by IDs (~500 tokens/entry) |
-| `cwa_memory_search_all` | Search across memories + observations |
+The MCP server is the **primary runtime interface** between Claude Code and CWA. All agents, skills, and commands ultimately call these tools.
 
-### Resources
-- `project://constitution` - Project values/constraints
-- `project://current-spec` - Active specification
-- `project://domain-model` - DDD model
-- `project://kanban-board` - Task board state
-- `project://decisions` - ADR log
+### Tools (by Phase)
+
+**Planning & Context:**
+| Tool | Description | Used By |
+|------|-------------|---------|
+| `cwa_get_context_summary` | Compact project summary | orchestrator, /status |
+| `cwa_get_spec` | Spec with acceptance criteria | specifier, implementer, reviewer, tester |
+| `cwa_get_next_steps` | Suggested next actions | orchestrator |
+| `cwa_generate_tasks` | Create tasks from spec criteria | specifier, /create-spec |
+
+**Implementation & Workflow:**
+| Tool | Description | Used By |
+|------|-------------|---------|
+| `cwa_get_current_task` | In-progress task details | implementer, reviewer, /implement-task |
+| `cwa_update_task_status` | Move task (enforces WIP limits) | implementer, reviewer, orchestrator |
+| `cwa_get_domain_model` | Bounded contexts and objects | architect, [context]-expert agents |
+
+**Knowledge Graph:**
+| Tool | Description | Used By |
+|------|-------------|---------|
+| `cwa_graph_query` | Execute Cypher query | architect |
+| `cwa_graph_impact` | Entity impact analysis | architect, /domain-discover |
+| `cwa_graph_sync` | Sync SQLite → Neo4j | orchestrator, /sync-context |
+
+**Memory & Learning:**
+| Tool | Description | Used By |
+|------|-------------|---------|
+| `cwa_search_memory` | Text search project memory | all agents |
+| `cwa_memory_semantic_search` | Vector similarity search | analyst, architect |
+| `cwa_memory_add` | Store memory with embedding | all agents |
+| `cwa_add_decision` | Record ADR with rationale | architect, orchestrator, documenter |
+| `cwa_observe` | Structured observation (bugfix/feature/discovery/decision/change/insight) | implementer, tester |
+| `cwa_memory_timeline` | Compact timeline (~50 tokens/entry) | orchestrator, /session-summary |
+| `cwa_memory_get` | Full details by IDs (~500 tokens/entry) | on-demand deep dive |
+| `cwa_memory_search_all` | Search memories + observations | analyst, architect |
+
+### Resources (Loaded at Session Start)
+| URI | Content | Token Cost |
+|-----|---------|------------|
+| `project://constitution` | Project values/constraints | ~200 tokens |
+| `project://current-spec` | Active spec with criteria | ~300 tokens |
+| `project://domain-model` | DDD contexts + entities | ~500 tokens |
+| `project://kanban-board` | Task board state | ~200 tokens |
+| `project://decisions` | Recent ADR log | ~400 tokens |
 
 ## Docker Services
 
@@ -225,18 +292,36 @@ WIP limits enforced:
 
 ## Code Generation Output
 
+All generated files map to Claude Code features:
+
 ```
 .claude/
-├── agents/           # One .md per bounded context (+ 8 built-in)
-├── skills/           # One dir per approved spec (+ 2 built-in)
-│   └── <slug>/
+├── agents/           # Claude Code Agents: one per bounded context (+ 8 built-in)
+│                     # → Each agent has role, allowed tools, and MCP tool references
+├── skills/           # Claude Code Skills: one per approved spec (+ 2 built-in)
+│   └── <slug>/       # → Repeatable workflows with acceptance criteria
 │       └── SKILL.md
-├── commands/         # Slash commands (8 built-in)
-├── rules/            # Code rules (5 built-in)
-├── design-system.md  # Design tokens from image analysis
-└── hooks.json        # Validation hooks from invariants
-CLAUDE.md             # Regenerated project context
+├── commands/         # Claude Code Commands: 8 slash commands
+│                     # → Quick-access workflows (/project:next-task, /project:status, etc.)
+├── rules/            # Claude Code Rules: 5 constraint files
+│                     # → Enforced during code generation (workflow, domain, tests, api, memory)
+├── design-system.md  # Design tokens extracted via Claude Vision API
+│                     # → Referenced by implementer agent for UI consistency
+└── hooks.json        # Claude Code Hooks: event-driven validation
+                      # → pre-commit: WIP check, invariant validation
+                      # → post-test: task advancement reminder
+CLAUDE.md             # Session context: domain, specs, decisions, current work, observations
 ```
+
+### How Artifacts Are Generated
+
+| Artifact | Source Data | Generator | Trigger |
+|----------|------------|-----------|---------|
+| `agents/[context]-expert.md` | Bounded context + entities | `cwa codegen agent` | New context created |
+| `skills/[spec-slug]/SKILL.md` | Spec + acceptance criteria | `cwa codegen skill` | Spec approved/active |
+| `hooks.json` | Domain object invariants | `cwa codegen hooks` | Invariants updated |
+| `CLAUDE.md` | All project state | `cwa codegen claude-md` | Any significant change |
+| `design-system.md` | UI screenshot analysis | `cwa design from-image` | Manual trigger |
 
 ## Building
 
