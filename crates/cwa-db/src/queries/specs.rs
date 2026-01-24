@@ -38,6 +38,26 @@ pub fn create_spec(
     })
 }
 
+/// Create a new spec with acceptance criteria.
+pub fn create_spec_with_criteria(
+    pool: &DbPool,
+    id: &str,
+    project_id: &str,
+    title: &str,
+    description: Option<&str>,
+    priority: &str,
+    criteria_json: &str,
+) -> DbResult<()> {
+    pool.with_conn(|conn| {
+        conn.execute(
+            "INSERT INTO specs (id, project_id, title, description, priority, acceptance_criteria)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, project_id, title, description, priority, criteria_json],
+        )?;
+        Ok(())
+    })
+}
+
 /// Get a spec by ID.
 pub fn get_spec(pool: &DbPool, id: &str) -> DbResult<SpecRow> {
     pool.with_conn(|conn| {

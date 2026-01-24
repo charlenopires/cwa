@@ -15,6 +15,9 @@ pub enum SpecCommands {
     /// Parse a long prompt and create multiple specifications
     FromPrompt(FromPromptArgs),
 
+    /// Add acceptance criteria to an existing specification
+    AddCriteria(AddCriteriaArgs),
+
     /// List all specifications
     List,
 
@@ -40,6 +43,10 @@ pub struct NewSpecArgs {
     /// Priority (low, medium, high, critical)
     #[arg(long, default_value = "medium")]
     pub priority: String,
+
+    /// Acceptance criteria (can be specified multiple times)
+    #[arg(short = 'c', long = "criteria")]
+    pub criteria: Vec<String>,
 }
 
 #[derive(Args)]
@@ -73,6 +80,15 @@ pub struct ValidateArgs {
 }
 
 #[derive(Args)]
+pub struct AddCriteriaArgs {
+    /// Spec ID or title
+    pub spec: String,
+
+    /// Acceptance criteria to add (one or more)
+    pub criteria: Vec<String>,
+}
+
+#[derive(Args)]
 pub struct ArchiveArgs {
     /// Spec ID
     pub spec_id: String,
@@ -91,12 +107,19 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
 
     match cmd {
         SpecCommands::New(args) => {
-            let spec = cwa_core::spec::create_spec(
+            let criteria = if args.criteria.is_empty() {
+                None
+            } else {
+                Some(args.criteria.as_slice())
+            };
+
+            let spec = cwa_core::spec::create_spec_with_criteria(
                 &pool,
                 &project.id,
                 &args.name,
                 args.description.as_deref(),
                 &args.priority,
+                criteria,
             )?;
 
             println!(
@@ -105,6 +128,9 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
                 spec.title.cyan(),
                 spec.id.dimmed()
             );
+            if !spec.acceptance_criteria.is_empty() {
+                println!("  {} acceptance criteria added", spec.acceptance_criteria.len());
+            }
         }
 
         SpecCommands::FromPrompt(args) => {
@@ -166,6 +192,28 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
                     spec.id.dimmed()
                 );
             }
+        }
+
+        SpecCommands::AddCriteria(args) => {
+            if args.criteria.is_empty() {
+                println!("{} No criteria provided.", "✗".red().bold());
+                return Ok(());
+            }
+
+            let spec = cwa_core::spec::add_acceptance_criteria(
+                &pool,
+                &project.id,
+                &args.spec,
+                &args.criteria,
+            )?;
+
+            println!(
+                "{} Added {} criteria to spec '{}' (total: {})",
+                "✓".green().bold(),
+                args.criteria.len(),
+                spec.title.cyan(),
+                spec.acceptance_criteria.len()
+            );
         }
 
         SpecCommands::List => {

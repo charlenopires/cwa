@@ -17,10 +17,28 @@ pub fn create_spec(
     description: Option<&str>,
     priority: &str,
 ) -> CwaResult<Spec> {
+    create_spec_with_criteria(pool, project_id, title, description, priority, None)
+}
+
+/// Create a new specification with optional acceptance criteria.
+pub fn create_spec_with_criteria(
+    pool: &DbPool,
+    project_id: &str,
+    title: &str,
+    description: Option<&str>,
+    priority: &str,
+    criteria: Option<&[String]>,
+) -> CwaResult<Spec> {
     let id = Uuid::new_v4().to_string();
     let _priority_enum = Priority::from_str(priority);
 
-    queries::create_spec(pool, &id, project_id, title, description, priority)?;
+    if let Some(criteria) = criteria {
+        let criteria_json = serde_json::to_string(criteria)
+            .map_err(|e| CwaError::ValidationError(format!("Failed to serialize criteria: {}", e)))?;
+        queries::create_spec_with_criteria(pool, &id, project_id, title, description, priority, &criteria_json)?;
+    } else {
+        queries::create_spec(pool, &id, project_id, title, description, priority)?;
+    }
 
     let row = queries::get_spec(pool, &id)?;
     Ok(Spec::from_row(row))
@@ -73,6 +91,26 @@ pub fn update_status(pool: &DbPool, id: &str, status: &str) -> CwaResult<()> {
 /// Archive a spec.
 pub fn archive_spec(pool: &DbPool, id: &str) -> CwaResult<()> {
     update_status(pool, id, "archived")
+}
+
+/// Add acceptance criteria to an existing spec (appends to existing list).
+pub fn add_acceptance_criteria(
+    pool: &DbPool,
+    project_id: &str,
+    identifier: &str,
+    new_criteria: &[String],
+) -> CwaResult<Spec> {
+    let spec = get_spec(pool, project_id, identifier)?;
+
+    let mut criteria = spec.acceptance_criteria.clone();
+    criteria.extend(new_criteria.iter().cloned());
+
+    let criteria_json = serde_json::to_string(&criteria)
+        .map_err(|e| CwaError::ValidationError(format!("Failed to serialize criteria: {}", e)))?;
+    queries::update_acceptance_criteria(pool, &spec.id, &criteria_json)?;
+
+    let row = queries::get_spec(pool, &spec.id)?;
+    Ok(Spec::from_row(row))
 }
 
 /// Validate a spec (placeholder - would check implementation).

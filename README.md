@@ -142,13 +142,15 @@ Neo4j and Qdrant are **derived stores** - they're populated by syncing from SQLi
 cwa init my-project
 cd my-project
 
-# Create your first specification
-cwa spec new "User Authentication" --description "JWT-based auth system" --priority high
+# Create your first specification with acceptance criteria
+cwa spec new "User Authentication" --description "JWT-based auth system" --priority high \
+  -c "User can register with email and password" \
+  -c "User can login with valid credentials" \
+  -c "User receives error on invalid credentials" \
+  -c "Session expires after 24 hours"
 
-# Create tasks from the spec
-cwa task new "Set up JWT library" --priority high
-cwa task new "Implement login endpoint" --priority high
-cwa task new "Add refresh token support" --priority medium
+# Automatically generate tasks from the spec's criteria
+cwa task generate "User Authentication"
 
 # View the Kanban board
 cwa task board
@@ -220,18 +222,29 @@ Project: my-saas
 ### Specifications (SDD)
 
 ```bash
-cwa spec new <title> [--description <desc>] [--priority <p>]
+cwa spec new <title> [--description <desc>] [--priority <p>] [-c <criterion>]...
 cwa spec from-prompt [<text>] [--file <path>] [--priority <p>] [--dry-run]
+cwa spec add-criteria <spec> <criterion>...
 cwa spec list
 cwa spec status [<spec>]
 cwa spec validate <spec>
 cwa spec archive <spec-id>
 ```
 
-**Example: Creating a single spec:**
+**Example: Creating a spec with acceptance criteria:**
 ```bash
-$ cwa spec new "User Authentication" --description "JWT-based auth" --priority high
-✓ Spec created: abc123
+$ cwa spec new "User Authentication" --description "JWT-based auth" --priority high \
+  -c "User can register with email and password" \
+  -c "User can login with valid credentials" \
+  -c "Session expires after 24 hours"
+✓ Created spec: User Authentication (abc123)
+  3 acceptance criteria added
+```
+
+**Example: Adding criteria to an existing spec:**
+```bash
+$ cwa spec add-criteria abc123 "User can reset password" "User can enable 2FA"
+✓ Added 2 criteria to spec 'User Authentication' (total: 5)
 ```
 
 **Example: Creating multiple specs from a long prompt:**
@@ -275,6 +288,7 @@ def456   Payment Processing     active   medium
 
 ```bash
 cwa task new <title> [--description <d>] [--spec <id>] [--priority <p>]
+cwa task generate <spec> [--status <s>] [--prefix <p>] [--dry-run]
 cwa task move <task-id> <status>   # backlog|todo|in_progress|review|done
 cwa task board                     # Display Kanban board
 cwa task wip                       # Show WIP limits status
@@ -298,6 +312,36 @@ $ cwa task wip
   todo:        3/5
   in_progress: 1/1 (at limit)
   review:      0/2
+```
+
+**Example: Generating tasks from spec criteria:**
+```bash
+# Preview what would be generated
+$ cwa task generate abc123 --dry-run
+⊙ Would create 3 task(s) for spec 'User Authentication':
+
+  1. User can register with email and password [high]
+  2. User can login with valid credentials [high]
+  3. Session expires after 24 hours [high]
+
+# Generate the tasks
+$ cwa task generate abc123
+✓ Generated 3 task(s) for spec 'User Authentication':
+
+  1. User can register with email and password (task-001)
+  2. User can login with valid credentials (task-002)
+  3. Session expires after 24 hours (task-003)
+
+# Running again skips existing tasks
+$ cwa task generate abc123
+⊙ All 3 criteria already have tasks. Nothing to generate.
+
+# With a title prefix
+$ cwa task generate abc123 --prefix "Auth"
+✓ Generated 3 task(s) for spec 'User Authentication':
+
+  1. Auth: User can register with email and password (task-004)
+  ...
 ```
 
 ### Domain Modeling (DDD)
@@ -508,6 +552,7 @@ Add to your `.mcp.json`:
 | `cwa_update_task_status` | Move a task to a new status |
 | `cwa_add_decision` | Record an architectural decision |
 | `cwa_get_next_steps` | Get suggested next actions |
+| `cwa_generate_tasks` | Generate tasks from spec acceptance criteria |
 | `cwa_search_memory` | Search project memory (text) |
 | `cwa_graph_query` | Execute Cypher query on knowledge graph |
 | `cwa_graph_impact` | Analyze impact of entity changes |
@@ -541,6 +586,7 @@ Start with `cwa serve` and open `http://localhost:3000`.
 | GET | `/api/specs` | List specifications |
 | POST | `/api/specs` | Create specification |
 | GET | `/api/specs/{id}` | Get spec by ID |
+| POST | `/api/specs/{id}/generate-tasks` | Generate tasks from spec criteria |
 | GET | `/api/domains` | List bounded contexts |
 | GET | `/api/decisions` | List decisions |
 | POST | `/api/decisions` | Create decision |
@@ -763,12 +809,14 @@ cwa domain context new "Notifications" \
   --description "Event-driven user notifications (in-app, email, push)"
 cwa graph sync
 
-# Step 3: Task Breakdown
-cwa task new "Define notification events enum" --spec <spec-id> --priority high
-cwa task new "Create notification store (SQLite)" --spec <spec-id> --priority high
-cwa task new "Implement WebSocket delivery" --spec <spec-id> --priority medium
-cwa task new "Add email delivery via SMTP" --spec <spec-id> --priority medium
-cwa task new "Build notification preferences UI" --spec <spec-id> --priority low
+# Step 3: Add acceptance criteria and generate tasks
+cwa spec add-criteria <spec-id> \
+  "Define notification events enum" \
+  "Create notification store (SQLite)" \
+  "Implement WebSocket delivery" \
+  "Add email delivery via SMTP" \
+  "Build notification preferences UI"
+cwa task generate <spec-id>
 
 # Step 4: Start Implementation
 cwa task move <first-task-id> todo

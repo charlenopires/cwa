@@ -38,6 +38,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/specs", get(routes::specs::list_specs))
         .route("/specs", post(routes::specs::create_spec))
         .route("/specs/{id}", get(routes::specs::get_spec))
+        .route("/specs/{id}/generate-tasks", post(routes::specs::generate_tasks))
         // Domains
         .route("/domains", get(routes::domains::list_contexts))
         .route("/domains/{id}", get(routes::domains::get_context))

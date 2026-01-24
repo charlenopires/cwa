@@ -297,6 +297,24 @@ fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
             }),
         },
         Tool {
+            name: "cwa_generate_tasks".to_string(),
+            description: "Generate tasks from a spec's acceptance criteria".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "spec_identifier": {
+                        "type": "string",
+                        "description": "Spec ID or title"
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "Initial task status (default: backlog)"
+                    }
+                },
+                "required": ["spec_identifier"]
+            }),
+        },
+        Tool {
             name: "cwa_memory_add".to_string(),
             description: "Store a memory with vector embedding for future semantic search".to_string(),
             input_schema: serde_json::json!({
@@ -475,6 +493,31 @@ async fn handle_tool_call(
                 })?;
 
             serde_json::to_value(&results).unwrap()
+        }
+
+        "cwa_generate_tasks" => {
+            let spec_identifier = args["spec_identifier"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing spec_identifier".to_string(),
+            })?;
+            let status = args.get("status").and_then(|v| v.as_str()).unwrap_or("backlog");
+
+            let result = cwa_core::task::generate_tasks_from_spec(pool, &project.id, spec_identifier, status)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({
+                "success": true,
+                "created": result.created.len(),
+                "skipped": result.skipped,
+                "tasks": result.created.iter().map(|t| serde_json::json!({
+                    "id": t.id,
+                    "title": t.title,
+                    "status": t.status.as_str()
+                })).collect::<Vec<_>>()
+            })
         }
 
         // Graph tools

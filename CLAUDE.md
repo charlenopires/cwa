@@ -68,8 +68,9 @@ cwa init <name>                          # Initialize project
 cwa context status                       # Current focus summary
 
 # Specifications (SDD)
-cwa spec new <title>                     # Create specification
+cwa spec new <title> [-c <criterion>]... # Create specification (with optional criteria)
 cwa spec from-prompt [<text>] [--file]   # Parse long prompt into multiple specs
+cwa spec add-criteria <spec> <crit>...   # Add acceptance criteria to existing spec
 cwa spec list                            # List all specs
 cwa spec status [<spec>]                 # Show spec details
 cwa spec validate <spec>                 # Validate completeness
@@ -77,6 +78,7 @@ cwa spec archive <spec-id>               # Archive a spec
 
 # Tasks (Kanban)
 cwa task new <title>                     # Create task
+cwa task generate <spec> [--dry-run]     # Auto-create tasks from spec criteria
 cwa task move <id> <status>              # Move task through workflow
 cwa task board                           # Display Kanban board
 cwa task wip                             # Show WIP limits status
@@ -142,6 +144,7 @@ cwa mcp stdio                            # Run MCP server
 | `cwa_update_task_status` | Move task to new status |
 | `cwa_add_decision` | Record architectural decision |
 | `cwa_get_next_steps` | Suggested next actions |
+| `cwa_generate_tasks` | Generate tasks from spec criteria |
 | `cwa_search_memory` | Search project memory |
 | `cwa_graph_query` | Execute Cypher query on graph |
 | `cwa_graph_impact` | Analyze entity impact |
@@ -176,6 +179,7 @@ Base URL: `http://localhost:3000`
 | GET | `/api/board` | Kanban board with columns |
 | GET/POST | `/api/specs` | List/create specs |
 | GET | `/api/specs/{id}` | Get spec details |
+| POST | `/api/specs/{id}/generate-tasks` | Generate tasks from criteria |
 | GET | `/api/domains` | List bounded contexts |
 | GET/POST | `/api/decisions` | List/create ADRs |
 | GET | `/api/context/summary` | Project context summary |

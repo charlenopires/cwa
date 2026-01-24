@@ -168,6 +168,42 @@ pub fn list_tasks(pool: &DbPool, project_id: &str) -> DbResult<Vec<TaskRow>> {
     })
 }
 
+/// List tasks by spec ID.
+pub fn list_tasks_by_spec(pool: &DbPool, spec_id: &str) -> DbResult<Vec<TaskRow>> {
+    pool.with_conn(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT id, project_id, spec_id, title, description, status, priority,
+                    assignee, labels, estimated_effort, actual_effort, blocked_by,
+                    created_at, updated_at, started_at, completed_at
+             FROM tasks WHERE spec_id = ?1
+             ORDER BY created_at ASC",
+        )?;
+
+        let rows = stmt.query_map(params![spec_id], |row| {
+            Ok(TaskRow {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                spec_id: row.get(2)?,
+                title: row.get(3)?,
+                description: row.get(4)?,
+                status: row.get(5)?,
+                priority: row.get(6)?,
+                assignee: row.get(7)?,
+                labels: row.get(8)?,
+                estimated_effort: row.get(9)?,
+                actual_effort: row.get(10)?,
+                blocked_by: row.get(11)?,
+                created_at: row.get(12)?,
+                updated_at: row.get(13)?,
+                started_at: row.get(14)?,
+                completed_at: row.get(15)?,
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
+    })
+}
+
 /// List tasks by status.
 pub fn list_tasks_by_status(pool: &DbPool, project_id: &str, status: &str) -> DbResult<Vec<TaskRow>> {
     pool.with_conn(|conn| {

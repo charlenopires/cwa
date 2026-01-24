@@ -52,6 +52,12 @@ pub fn list_tasks(pool: &DbPool, project_id: &str) -> CwaResult<Vec<Task>> {
     Ok(rows.into_iter().map(Task::from_row).collect())
 }
 
+/// List tasks linked to a specific spec.
+pub fn list_tasks_by_spec(pool: &DbPool, spec_id: &str) -> CwaResult<Vec<Task>> {
+    let rows = queries::list_tasks_by_spec(pool, spec_id)?;
+    Ok(rows.into_iter().map(Task::from_row).collect())
+}
+
 /// Move a task to a new status.
 pub fn move_task(pool: &DbPool, project_id: &str, task_id: &str, new_status: &str) -> CwaResult<()> {
     let task = queries::get_task(pool, task_id)?;
@@ -126,6 +132,70 @@ pub fn get_wip_status(pool: &DbPool, project_id: &str) -> CwaResult<WipStatus> {
     }
 
     Ok(WipStatus { columns })
+}
+
+/// Result of task generation from a spec.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GenerateResult {
+    pub created: Vec<Task>,
+    pub skipped: usize,
+}
+
+/// Generate tasks from a spec's acceptance criteria.
+///
+/// Creates one task per acceptance criterion, skipping criteria that already
+/// have a matching task (by title comparison).
+pub fn generate_tasks_from_spec(
+    pool: &DbPool,
+    project_id: &str,
+    spec_id: &str,
+    initial_status: &str,
+) -> CwaResult<GenerateResult> {
+    // Fetch the spec
+    let spec = crate::spec::get_spec(pool, project_id, spec_id)?;
+
+    if spec.acceptance_criteria.is_empty() {
+        return Err(CwaError::ValidationError(
+            format!("Spec '{}' has no acceptance criteria. Add criteria first with 'cwa spec add-criteria'.", spec.title)
+        ));
+    }
+
+    // Fetch existing tasks for this spec to avoid duplicates
+    let existing_tasks = queries::list_tasks_by_spec(pool, &spec.id)?;
+    let existing_titles: Vec<String> = existing_tasks.iter().map(|t| t.title.clone()).collect();
+
+    let priority = spec.priority.as_str();
+    let mut created = Vec::new();
+    let mut skipped = 0;
+
+    for criterion in &spec.acceptance_criteria {
+        if existing_titles.contains(criterion) {
+            skipped += 1;
+            continue;
+        }
+
+        let task = create_task(
+            pool,
+            project_id,
+            criterion,
+            None,
+            Some(&spec.id),
+            priority,
+        )?;
+
+        // Move to initial status if not "backlog"
+        if initial_status != "backlog" {
+            move_task(pool, project_id, &task.id, initial_status)?;
+        }
+
+        created.push(if initial_status != "backlog" {
+            get_task(pool, &task.id)?
+        } else {
+            task
+        });
+    }
+
+    Ok(GenerateResult { created, skipped })
 }
 
 /// Initialize default Kanban columns for a project.
