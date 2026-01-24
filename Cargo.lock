@@ -629,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "cwa"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-codegen"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "cwa-core",
@@ -671,7 +671,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -690,7 +690,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-db"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "rusqlite",
  "rusqlite_migration",
@@ -700,7 +700,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-embedding"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -718,7 +718,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-graph"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -736,7 +736,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-mcp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "cwa-core",
@@ -752,7 +752,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-token"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "serde",
@@ -765,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "cwa-web"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "askama",
