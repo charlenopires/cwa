@@ -314,6 +314,17 @@ pub fn delete_tasks_by_spec(pool: &DbPool, spec_id: &str) -> DbResult<usize> {
     })
 }
 
+/// Delete all tasks for a project. Returns the number of deleted tasks.
+pub fn delete_all_tasks(pool: &DbPool, project_id: &str) -> DbResult<usize> {
+    pool.with_conn(|conn| {
+        let count = conn.execute(
+            "DELETE FROM tasks WHERE project_id = ?1",
+            params![project_id],
+        )?;
+        Ok(count)
+    })
+}
+
 /// Set WIP limit for a column.
 pub fn set_wip_limit(pool: &DbPool, project_id: &str, column_name: &str, limit: Option<i64>, order: i32) -> DbResult<()> {
     pool.with_conn(|conn| {

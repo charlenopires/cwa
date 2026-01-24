@@ -138,7 +138,7 @@ cwa task generate <spec> [--dry-run]     # Auto-create tasks from spec criteria
 cwa task move <id> <status>              # Move task through workflow
 cwa task board                           # Display Kanban board
 cwa task wip                             # Show WIP limits status
-cwa task clear <spec> [--confirm]        # Delete all tasks for a spec
+cwa task clear [<spec>] [--confirm]       # Delete tasks (all or by spec)
 
 # Domain Modeling (DDD)
 cwa domain discover                      # Interactive domain discovery

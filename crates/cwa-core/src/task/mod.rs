@@ -205,6 +205,12 @@ pub fn clear_tasks_by_spec(pool: &DbPool, project_id: &str, spec_id: &str) -> Cw
     Ok(count)
 }
 
+/// Clear all tasks for a project. Returns the number of deleted tasks.
+pub fn clear_all_tasks(pool: &DbPool, project_id: &str) -> CwaResult<usize> {
+    let count = queries::delete_all_tasks(pool, project_id)?;
+    Ok(count)
+}
+
 /// Initialize default Kanban columns for a project.
 pub fn init_kanban_columns(pool: &DbPool, project_id: &str) -> CwaResult<()> {
     for (i, (name, limit)) in DEFAULT_COLUMNS.iter().enumerate() {

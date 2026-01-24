@@ -33,8 +33,8 @@ pub enum TaskCommands {
 
 #[derive(Args)]
 pub struct ClearTaskArgs {
-    /// Spec ID or title
-    pub spec: String,
+    /// Spec ID or title (optional - clears all tasks if omitted)
+    pub spec: Option<String>,
 
     /// Skip confirmation prompt
     #[arg(long)]
@@ -272,32 +272,58 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
         }
 
         TaskCommands::Clear(args) => {
-            let spec = cwa_core::spec::get_spec(&pool, &project.id, &args.spec)?;
-            let tasks = cwa_core::task::list_tasks_by_spec(&pool, &spec.id)?;
+            if let Some(spec_id) = &args.spec {
+                let spec = cwa_core::spec::get_spec(&pool, &project.id, spec_id)?;
+                let tasks = cwa_core::task::list_tasks_by_spec(&pool, &spec.id)?;
 
-            if tasks.is_empty() {
-                println!("{} No tasks to clear for spec '{}'.", "⊙".blue().bold(), spec.title.cyan());
-                return Ok(());
-            }
+                if tasks.is_empty() {
+                    println!("{} No tasks to clear for spec '{}'.", "⊙".blue().bold(), spec.title.cyan());
+                    return Ok(());
+                }
 
-            if !args.confirm {
+                if !args.confirm {
+                    println!(
+                        "{} This will permanently delete {} task(s) for spec '{}'. Run with {} to confirm.",
+                        "!".yellow().bold(),
+                        tasks.len(),
+                        spec.title.cyan(),
+                        "--confirm".bold()
+                    );
+                    return Ok(());
+                }
+
+                let count = cwa_core::task::clear_tasks_by_spec(&pool, &project.id, spec_id)?;
                 println!(
-                    "{} This will permanently delete {} task(s) for spec '{}'. Run with {} to confirm.",
-                    "!".yellow().bold(),
-                    tasks.len(),
-                    spec.title.cyan(),
-                    "--confirm".bold()
+                    "{} Cleared {} task(s) for spec '{}'.",
+                    "✓".green().bold(),
+                    count,
+                    spec.title.cyan()
                 );
-                return Ok(());
-            }
+            } else {
+                let tasks = cwa_core::task::list_tasks(&pool, &project.id)?;
 
-            let count = cwa_core::task::clear_tasks_by_spec(&pool, &project.id, &args.spec)?;
-            println!(
-                "{} Cleared {} task(s) for spec '{}'.",
-                "✓".green().bold(),
-                count,
-                spec.title.cyan()
-            );
+                if tasks.is_empty() {
+                    println!("{} No tasks to clear.", "⊙".blue().bold());
+                    return Ok(());
+                }
+
+                if !args.confirm {
+                    println!(
+                        "{} This will permanently delete {} task(s). Run with {} to confirm.",
+                        "!".yellow().bold(),
+                        tasks.len(),
+                        "--confirm".bold()
+                    );
+                    return Ok(());
+                }
+
+                let count = cwa_core::task::clear_all_tasks(&pool, &project.id)?;
+                println!(
+                    "{} Cleared {} task(s).",
+                    "✓".green().bold(),
+                    count
+                );
+            }
         }
     }
 

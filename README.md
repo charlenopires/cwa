@@ -348,7 +348,7 @@ cwa task generate <spec> [--status <s>] [--prefix <p>] [--dry-run]
 cwa task move <task-id> <status>   # backlog|todo|in_progress|review|done
 cwa task board                     # Display Kanban board
 cwa task wip                       # Show WIP limits status
-cwa task clear <spec> [--confirm]  # Delete all tasks for a spec
+cwa task clear [<spec>] [--confirm] # Delete tasks (all or by spec)
 ```
 
 **Example:**
@@ -401,13 +401,19 @@ $ cwa task generate abc123 --prefix "Auth"
   ...
 ```
 
-**Example: Clearing tasks for a spec:**
+**Example: Clearing tasks:**
 ```bash
-# Preview (requires confirmation)
+# Clear all tasks
+$ cwa task clear
+! This will permanently delete 5 task(s). Run with --confirm to confirm.
+
+$ cwa task clear --confirm
+✓ Cleared 5 task(s).
+
+# Clear tasks for a specific spec
 $ cwa task clear abc123
 ! This will permanently delete 3 task(s) for spec 'User Authentication'. Run with --confirm to confirm.
 
-# Execute
 $ cwa task clear abc123 --confirm
 ✓ Cleared 3 task(s) for spec 'User Authentication'.
 ```
