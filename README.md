@@ -245,6 +245,7 @@ All CLI commands are documented in the [CLI Reference](#cli-reference) section b
 ```bash
 cwa init <name> [--from-prompt <prompt>]   # Initialize new project
 cwa context status                          # View current project focus
+cwa context summary                         # View context summary
 ```
 
 **Example:**
@@ -647,11 +648,21 @@ Infrastructure ready.
   Ollama API:    http://localhost:11434
 ```
 
+### Analysis
+
+```bash
+cwa analyze competitors <domain>   # Analyze competitors in a domain
+cwa analyze features <competitor>  # Analyze features of a competitor
+cwa analyze market <niche>         # Analyze a market segment
+```
+
 ### Servers
 
 ```bash
 cwa serve [--port <port>]          # Start web server (default: 3000)
 cwa mcp stdio                     # Run MCP server over stdio
+cwa mcp planner                   # Run MCP planner server (Claude Desktop)
+cwa mcp status                    # Show MCP configuration examples
 ```
 
 ## Claude Code Integration

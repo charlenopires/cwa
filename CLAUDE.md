@@ -119,6 +119,7 @@ SQLite database at `.cwa/cwa.db` with tables:
 # Project
 cwa init <name>                          # Initialize project
 cwa context status                       # Current focus summary
+cwa context summary                      # Context summary
 
 # Specifications (SDD)
 cwa spec new <title> [-c <criterion>]... # Create specification (with optional criteria)
@@ -196,9 +197,16 @@ cwa infra status                         # Check service health
 cwa infra logs [service] [--follow]      # View service logs
 cwa infra reset --confirm                # Destroy all data
 
+# Analysis
+cwa analyze competitors <domain>         # Analyze competitors
+cwa analyze features <competitor>        # Analyze features
+cwa analyze market <niche>               # Analyze market segment
+
 # Servers
 cwa serve [--port <port>]                # Start web server (default: 3000)
 cwa mcp stdio                            # Run MCP server
+cwa mcp planner                          # Run MCP planner (Claude Desktop)
+cwa mcp status                           # Show MCP configuration
 ```
 
 ## MCP Integration
