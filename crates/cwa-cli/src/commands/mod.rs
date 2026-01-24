@@ -7,6 +7,7 @@ use std::path::PathBuf;
 pub mod analyze;
 pub mod codegen;
 pub mod context;
+pub mod design;
 pub mod domain;
 pub mod graph;
 pub mod infra;
@@ -76,6 +77,10 @@ pub enum Commands {
     #[command(subcommand)]
     Graph(graph::GraphCommands),
 
+    /// Design system commands
+    #[command(subcommand)]
+    Design(design::DesignCommands),
+
     /// Code generation commands
     #[command(subcommand)]
     Codegen(codegen::CodegenCommands),
@@ -106,6 +111,7 @@ impl Cli {
             Commands::Serve(args) => serve::execute(args, &project_dir).await,
             Commands::Mcp(cmd) => mcp::execute(cmd, &project_dir).await,
             Commands::Graph(cmd) => graph::execute(cmd, &project_dir).await,
+            Commands::Design(cmd) => design::execute(cmd, &project_dir).await,
             Commands::Codegen(cmd) => codegen::execute(cmd, &project_dir).await,
             Commands::Tokens(cmd) => tokens::execute(cmd, &project_dir).await,
             Commands::Infra(cmd) => infra::execute(cmd, &project_dir).await,

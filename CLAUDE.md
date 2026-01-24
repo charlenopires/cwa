@@ -32,7 +32,8 @@ crates/
 - `rusqlite` 0.32 - SQLite database
 - `neo4rs` 0.8 - Neo4j graph database driver
 - `qdrant-client` 1.12 - Qdrant vector store
-- `reqwest` 0.12 - HTTP client (Ollama API)
+- `reqwest` 0.12 - HTTP client (Ollama API, Claude Vision API)
+- `base64` 0.22 - Base64 encoding (image payloads for Claude API)
 - `tiktoken-rs` 0.6 - Token counting (cl100k_base)
 - `askama` 0.12 - Compile-time HTML templates
 - `tokio` 1.43 - Async runtime
@@ -59,6 +60,7 @@ SQLite database at `.cwa/cwa.db` with tables:
 - `labels` / `card_labels` - Card labeling
 - `card_history` - Card movement audit trail
 - `sync_state` - Neo4j sync tracking
+- `design_systems` - Design tokens extracted from UI screenshots
 
 ## CLI Commands
 
@@ -97,6 +99,11 @@ cwa memory import                        # Import legacy entries
 cwa memory compact [--min-confidence N]  # Remove low-confidence entries
 cwa memory sync                          # Sync CLAUDE.md
 cwa memory export [--output <file>]      # Export as JSON
+
+# Design System
+cwa design from-image <url>              # Extract design system from screenshot (requires ANTHROPIC_API_KEY)
+cwa design from-image <url> --dry-run    # Preview without saving
+cwa design from-image <url> --model <m>  # Use specific Claude model
 
 # Knowledge Graph
 cwa graph sync                           # Sync SQLite -> Neo4j
@@ -212,6 +219,7 @@ WIP limits enforced:
 │       └── SKILL.md
 ├── commands/         # Slash commands (8 built-in)
 ├── rules/            # Code rules (5 built-in)
+├── design-system.md  # Design tokens from image analysis
 └── hooks.json        # Validation hooks from invariants
 CLAUDE.md             # Regenerated project context
 ```
@@ -235,6 +243,7 @@ project/
 │   ├── skills/              # 2 built-in + generated from specs
 │   ├── commands/            # 8 slash commands
 │   ├── rules/               # 5 rule files
+│   ├── design-system.md     # Design tokens (from cwa design from-image)
 │   └── hooks.json           # Validation hooks
 ├── docker/
 │   ├── docker-compose.yml   # Infrastructure services

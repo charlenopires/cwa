@@ -9,6 +9,7 @@ pub fn run_migrations(pool: &DbPool) -> DbResult<()> {
         M::up(include_str!("001_initial.sql")),
         M::up(include_str!("002_boards_cards.sql")),
         M::up(include_str!("003_memories_sync.sql")),
+        M::up(include_str!("004_design_systems.sql")),
     ]);
 
     pool.with_conn_mut(|conn| {

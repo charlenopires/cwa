@@ -6,4 +6,5 @@ pub mod specs;
 pub mod tasks;
 pub mod domains;
 pub mod decisions;
+pub mod design_systems;
 pub mod memory;

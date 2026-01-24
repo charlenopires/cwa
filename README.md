@@ -9,6 +9,7 @@ A Rust CLI tool for development workflow orchestration integrated with Claude Co
 - **Kanban Board** - Task management with WIP limits and workflow enforcement (CLI + web)
 - **Knowledge Graph** - Neo4j-backed entity relationships, impact analysis, and exploration
 - **Semantic Memory** - Vector embeddings via Ollama + Qdrant for intelligent context recall
+- **Design System Extraction** - Analyze UI screenshots via Claude Vision API to generate design tokens (colors, typography, spacing, components)
 - **Code Generation** - Generate Claude Code agents, skills, hooks, and CLAUDE.md from your domain model
 - **Token Analysis** - Count tokens, estimate costs, and optimize context budget
 - **MCP Server** - Full Model Context Protocol integration with Claude Code
@@ -77,6 +78,7 @@ cp target/release/cwa /usr/local/bin/
 
 - **Rust 1.83+** (2021 edition)
 - **Docker** (optional - required for Knowledge Graph, Embeddings, and Semantic Memory features)
+- **ANTHROPIC_API_KEY** (optional - required for `cwa design from-image` command)
 
 ## Technology Choices
 
@@ -429,6 +431,39 @@ Impact analysis for spec abc123
 
 4 related entities found.
 ```
+
+### Design System
+
+Extract a complete design system from a UI screenshot using Claude Vision API. The extracted tokens are stored in memory, synced to the knowledge graph, and written to `.claude/design-system.md` for reference by Claude Code agents.
+
+```bash
+cwa design from-image <url>              # Extract design system from screenshot
+    --model <model>                       # Claude model (default: claude-sonnet-4-20250514)
+    --dry-run                             # Preview without saving
+```
+
+**Requires:** `ANTHROPIC_API_KEY` environment variable.
+
+**Example:**
+```bash
+$ cwa design from-image https://example.com/app-screenshot.png
+→ Analyzing image: https://example.com/app-screenshot.png
+✓ Stored design system (id: a1b2c3d4)
+✓ Generated: .claude/design-system.md
+✓ Stored embedding (768 dims)
+✓ Graph synced (1 nodes, 1 relationships)
+
+Design system ready.
+  Reference: .claude/design-system.md
+```
+
+The generated `.claude/design-system.md` includes:
+- CSS custom properties with all design tokens
+- Color palette (primary, secondary, neutral, semantic)
+- Typography scale and font families
+- Spacing, border-radius, and shadow tokens
+- Breakpoints
+- Identified UI components with variants and states
 
 ### Code Generation
 

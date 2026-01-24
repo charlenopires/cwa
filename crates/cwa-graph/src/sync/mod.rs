@@ -7,6 +7,7 @@ pub mod spec_sync;
 pub mod domain_sync;
 pub mod kanban_sync;
 pub mod decision_sync;
+pub mod design_sync;
 
 use anyhow::{Context, Result};
 use neo4rs::Query;
@@ -65,6 +66,12 @@ pub async fn run_full_sync(client: &GraphClient, db: &DbPool, project_id: &str) 
         .context("Failed to sync decisions")?;
     info!(nodes = decision_result.nodes_created + decision_result.nodes_updated, rels = decision_result.relationships_created, "Decisions synced");
     total.merge(&decision_result);
+
+    // Sync design systems
+    let design_result = design_sync::sync_design_systems(client, db, project_id).await
+        .context("Failed to sync design systems")?;
+    info!(nodes = design_result.nodes_created + design_result.nodes_updated, rels = design_result.relationships_created, "Design systems synced");
+    total.merge(&design_result);
 
     // Update sync_state for all synced entities
     update_sync_state(db, project_id)?;

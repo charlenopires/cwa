@@ -5,6 +5,7 @@
 pub mod analysis;
 pub mod board;
 pub mod decision;
+pub mod design;
 pub mod domain;
 pub mod error;
 pub mod memory;

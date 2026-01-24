@@ -129,6 +129,13 @@ pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClau
         content.push('\n');
     }
 
+    // Design System
+    if let Ok(Some(_)) = cwa_db::queries::design_systems::get_latest_design_system(db, project_id) {
+        content.push_str("## Design System\n\n");
+        content.push_str("Design tokens reference: `.claude/design-system.md`\n\n");
+        content.push_str("All UI implementation must follow the design system tokens defined above.\n\n");
+    }
+
     Ok(GeneratedClaudeMd { content })
 }
 

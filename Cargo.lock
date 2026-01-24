@@ -649,6 +649,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -670,8 +671,11 @@ dependencies = [
 name = "cwa-core"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "base64 0.22.1",
  "chrono",
  "cwa-db",
+ "reqwest",
  "serde",
  "serde_json",
  "tera",
