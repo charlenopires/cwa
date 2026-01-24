@@ -21,17 +21,34 @@ pub async fn execute(args: ServeArgs, project_dir: &Path) -> Result<()> {
     let db_path = project_dir.join(".cwa/cwa.db");
     let pool = Arc::new(cwa_db::init_pool(&db_path)?);
 
+    println!();
     println!(
-        "{} Starting CWA server on {}:{}",
-        "→".blue().bold(),
+        "  {} {}",
+        "CWA".cyan().bold(),
+        "Web Server".bold()
+    );
+    println!();
+    println!(
+        "  {}  http://{}:{}",
+        "Dashboard".green(),
+        args.host,
+        args.port
+    );
+    println!(
+        "  {}       http://{}:{}/api",
+        "API".green(),
+        args.host,
+        args.port
+    );
+    println!(
+        "  {}  ws://{}:{}/ws",
+        "WebSocket".green(),
         args.host,
         args.port
     );
     println!();
-    println!("  Dashboard: http://{}:{}", args.host, args.port);
-    println!("  API:       http://{}:{}/api", args.host, args.port);
+    println!("  {}", "Ctrl+C to stop".dimmed());
     println!();
-    println!("{}", "Press Ctrl+C to stop".dimmed());
 
     cwa_web::run_server(pool, args.port).await?;
 

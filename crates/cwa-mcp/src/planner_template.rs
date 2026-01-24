@@ -350,81 +350,186 @@ _(Repeat for each spec)_
 
 ## CWA Bootstrap Commands
 
-Copy-paste these commands into Claude Code to initialize the project:
+Copy-paste these commands into Claude Code to initialize the full project workflow:
 
 ```bash
-# ═══════════════════════════════════════════════════════════
-# 1. INITIALIZE PROJECT
-# ═══════════════════════════════════════════════════════════
-cd /path/to/project
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 1: INITIALIZE PROJECT
+# ═══════════════════════════════════════════════════════════════════════════════
 cwa init "[project-name]"
+cd [project-name]
 
-# ═══════════════════════════════════════════════════════════
-# 2. CREATE BOUNDED CONTEXTS
-# ═══════════════════════════════════════════════════════════
-cwa domain context new "[context-name-1]"
-cwa domain context new "[context-name-2]"
-# ... one per context
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 2: INFRASTRUCTURE (optional — enables Knowledge Graph + Semantic Memory)
+# ═══════════════════════════════════════════════════════════════════════════════
+cwa infra up              # Starts Neo4j, Qdrant, Ollama
+cwa infra status          # Verify all services healthy
 
-# ═══════════════════════════════════════════════════════════
-# 3. ADD GLOSSARY TERMS
-# ═══════════════════════════════════════════════════════════
-# (use MCP tool cwa_add_glossary_term during session)
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 3: DOMAIN MODELING — Bounded Contexts
+# Define the major responsibility boundaries of the system
+# ═══════════════════════════════════════════════════════════════════════════════
+cwa domain context new "[context-name-1]" --description "[What this context exclusively owns]"
+cwa domain context new "[context-name-2]" --description "[What this context exclusively owns]"
+# ... one per bounded context
 
-# ═══════════════════════════════════════════════════════════
-# 4. CREATE SPECIFICATIONS WITH ACCEPTANCE CRITERIA
-# ═══════════════════════════════════════════════════════════
-cwa spec new "[spec-title-1]" -c "[criterion-1]" -c "[criterion-2]" -c "[criterion-3]"
-cwa spec new "[spec-title-2]" -c "[criterion-1]" -c "[criterion-2]"
-# ... one per spec, with ALL criteria inline
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 4: DOMAIN GLOSSARY — Ubiquitous Language
+# Record domain-specific terms to ensure consistent language across the project
+# ═══════════════════════════════════════════════════════════════════════════════
+cwa memory add "[Term]: [Precise definition in project context]" --type fact
+cwa memory add "[Term]: [Precise definition in project context]" --type fact
+# ... one per domain term
 
-# ═══════════════════════════════════════════════════════════
-# 5. GENERATE TASKS FROM SPECS
-# ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 5: ARCHITECTURAL DECISIONS
+# Record early design choices with rationale (prevents re-debating later)
+# ═══════════════════════════════════════════════════════════════════════════════
+cwa memory add "Using [technology] for [purpose] because [rationale]. Alternatives considered: [alternatives]" --type decision
+cwa memory add "Architecture: [pattern/style] because [rationale]" --type decision
+# ... one per architectural decision
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 6: SPECIFICATIONS — Features with Acceptance Criteria
+# Each spec is a distinct feature. Criteria must be clear and testable.
+# ═══════════════════════════════════════════════════════════════════════════════
+cwa spec new "[Feature Title]" \
+  --description "[What this feature does and why it matters]" \
+  --priority [critical|high|medium|low] \
+  -c "[Criterion 1 — testable statement]" \
+  -c "[Criterion 2 — testable statement]" \
+  -c "[Criterion 3 — testable statement]" \
+  -c "[Criterion 4 — testable statement]"
+
+cwa spec new "[Feature Title]" \
+  --description "[What this feature does and why it matters]" \
+  --priority [critical|high|medium|low] \
+  -c "[Criterion 1]" \
+  -c "[Criterion 2]" \
+  -c "[Criterion 3]"
+
+# ... repeat for each specification
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 7: GENERATE TASKS FROM SPECS
+# Auto-creates one task per acceptance criterion, populating the Kanban board
+# ═══════════════════════════════════════════════════════════════════════════════
 cwa task generate "[spec-title-1]"
 cwa task generate "[spec-title-2]"
 # ... one per spec
 
-# ═══════════════════════════════════════════════════════════
-# 6. GENERATE CLAUDE CODE ARTIFACTS
-# ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 8: KNOWLEDGE GRAPH SYNC
+# Syncs all entities to Neo4j for impact analysis and relationship queries
+# ═══════════════════════════════════════════════════════════════════════════════
+cwa graph sync
+cwa graph status          # Verify nodes and relationships created
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 9: GENERATE CLAUDE CODE ARTIFACTS
+# Creates agents, skills, hooks, commands, rules, and CLAUDE.md
+# ═══════════════════════════════════════════════════════════════════════════════
 cwa codegen all
 
-# ═══════════════════════════════════════════════════════════
-# 7. VERIFY
-# ═══════════════════════════════════════════════════════════
-cwa task board          # View Kanban board
-cwa spec list           # View all specs
-cwa domain context list # View contexts
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 10: VERIFY & ANALYZE
+# Confirm everything is set up correctly and within token budget
+# ═══════════════════════════════════════════════════════════════════════════════
+cwa spec list              # All specs with status and priority
+cwa task board             # Kanban board with WIP limits
+cwa domain context list    # Bounded contexts
+cwa context status         # Project focus summary
+cwa tokens analyze --all   # Token budget across all context files
+cwa tokens optimize        # Suggestions to stay within model window
 ```
 
 ---
 
-## Claude Code Workflow
+## Claude Code Development Workflow
 
 After bootstrapping, follow this workflow in each Claude Code session:
 
-1. **Session Start**: Claude Code reads `CLAUDE.md` and `.claude/` artifacts automatically
-2. **Context Check**: Run `cwa context status` or use MCP tool `cwa_get_context_summary`
-3. **Pick Task**: Run `cwa task board` → move a todo task to in_progress
-4. **Implement**: Write code following the spec's acceptance criteria
-5. **Record Learnings**: Use `cwa_observe` MCP tool for discoveries, gotchas, patterns
-6. **Record Decisions**: Use `cwa_add_decision` for architectural choices
-7. **Complete Task**: Run `cwa task move <id> review` or `done`
-8. **Sync Artifacts**: Run `cwa codegen all` to regenerate CLAUDE.md and artifacts
-9. **Next Session**: Repeat from step 1 — context is preserved via CLAUDE.md
+### Session Start
+```bash
+# Claude Code automatically reads CLAUDE.md and .claude/ artifacts
+# Check current project state:
+cwa context status                     # Quick overview of focus and progress
+cwa task board                         # See the Kanban board
+```
 
-### Key MCP Tools During Implementation
+### Pick and Start Work
+```bash
+cwa task move [task-id] in_progress    # Claim a task (respects WIP limit of 1)
+# Claude reads the spec via MCP tool cwa_get_spec
+# Tester agent writes tests from acceptance criteria first
+# Implementer agent writes code to pass tests
+```
 
-| Tool | When to Use |
-|------|-------------|
-| `cwa_get_current_task` | Check what you're working on |
-| `cwa_get_spec` | Read acceptance criteria for current work |
-| `cwa_update_task_status` | Move tasks through workflow |
-| `cwa_observe` | Record a bug fix, discovery, or pattern |
-| `cwa_add_decision` | Record an architectural decision |
-| `cwa_search_memory` | Recall past observations |
-| `cwa_get_domain_model` | Check entity definitions |
-| `cwa_get_context_summary` | Quick project overview |
+### During Implementation
+```bash
+# Record structured observations as you work:
+cwa memory observe "[what happened]" -t bugfix -f "[root cause]"
+cwa memory observe "[what you discovered]" -t discovery -f "[key fact]"
+cwa memory observe "[refactoring done]" -t refactor --files-modified src/foo.rs
+
+# Record architectural decisions with rationale:
+cwa memory add "[Decision with full rationale]" --type decision
+
+# Check impact before changing a domain entity:
+cwa graph impact context [context-id]  # What specs/tasks/decisions are affected?
+cwa graph impact spec [spec-id]        # What tasks implement this spec?
+
+# Search past knowledge:
+cwa memory search "[query]"            # Semantic search across all memory
+cwa memory timeline --days 7           # Recent observations timeline
+```
+
+### Complete Task
+```bash
+cwa task move [task-id] review         # Move to review
+# Reviewer agent validates against acceptance criteria
+cwa task move [task-id] done           # Mark complete
+```
+
+### End of Session
+```bash
+# Record session insights:
+cwa memory observe "[session summary]" -t insight -f "[key learning]"
+
+# Regenerate artifacts with updated state:
+cwa codegen all                        # Updates CLAUDE.md, agents, skills, hooks
+
+# Verify token budget:
+cwa tokens analyze --all               # Ensure context fits model window
+
+# Sync knowledge graph:
+cwa graph sync                         # Update relationships in Neo4j
+
+# If UI work was done, capture design system:
+cwa design from-image [screenshot-url] # Extract design tokens from UI
+```
+
+### Key MCP Tools Reference
+
+| Tool | Phase | When to Use |
+|------|-------|-------------|
+| `cwa_get_context_summary` | Start | Quick project state overview |
+| `cwa_get_current_task` | Work | Check what you're working on |
+| `cwa_get_spec` | Work | Read acceptance criteria |
+| `cwa_get_domain_model` | Work | Check entity definitions and invariants |
+| `cwa_update_task_status` | Work | Move tasks through workflow |
+| `cwa_observe` | Work | Record bugfix, discovery, feature, refactor |
+| `cwa_add_decision` | Work | Record architectural decisions with ADR |
+| `cwa_search_memory` | Any | Recall past observations and patterns |
+| `cwa_memory_semantic_search` | Any | Vector similarity search across memory |
+| `cwa_memory_timeline` | Start | Compact timeline of recent activity |
+| `cwa_graph_impact` | Design | Analyze impact of entity changes |
+| `cwa_graph_sync` | End | Sync SQLite to Neo4j |
+| `cwa_generate_tasks` | Plan | Auto-create tasks from spec criteria |
+| `cwa_create_spec` | Plan | Create spec with criteria via MCP |
+| `cwa_create_context` | Plan | Create bounded context via MCP |
+| `cwa_create_task` | Plan | Create individual task via MCP |
+| `cwa_get_next_steps` | Start | Get suggested next actions |
+| `cwa_memory_add` | Any | Store facts, preferences, patterns |
 
 "#;

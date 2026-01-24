@@ -23,11 +23,31 @@ pub async fn execute(cmd: McpCommands, project_dir: &Path) -> Result<()> {
 
     match cmd {
         McpCommands::Stdio => {
+            eprintln!(
+                "  {} {} {}",
+                "●".green().bold(),
+                "CWA MCP".cyan().bold(),
+                "server running (stdio)".bold()
+            );
+            eprintln!("  {} 24 tools | 5 resources", "▸".dimmed());
+            eprintln!("  {} Ctrl+C to stop", "▸".dimmed());
+            eprintln!();
+
             let pool = Arc::new(cwa_db::init_pool(&db_path)?);
             cwa_mcp::run_stdio_server(pool).await?;
         }
 
         McpCommands::Planner => {
+            eprintln!(
+                "  {} {} {}",
+                "●".cyan().bold(),
+                "CWA Planner".cyan().bold(),
+                "server running (stdio)".bold()
+            );
+            eprintln!("  {} 1 tool: cwa_plan_software", "▸".dimmed());
+            eprintln!("  {} Ctrl+C to stop", "▸".dimmed());
+            eprintln!();
+
             cwa_mcp::run_planner_stdio().await?;
         }
 
