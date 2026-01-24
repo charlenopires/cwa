@@ -70,6 +70,11 @@ fi
 # Make executable
 chmod +x "$INSTALL_DIR/$BINARY_NAME"
 
+# Ad-hoc sign for macOS Apple Silicon (prevents AMFI kill)
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    codesign --sign - --force "$INSTALL_DIR/$BINARY_NAME" 2>/dev/null || true
+fi
+
 echo ""
 echo "=== Installation Complete ==="
 echo ""
