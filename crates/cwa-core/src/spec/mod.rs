@@ -44,18 +44,24 @@ pub fn create_spec_with_criteria(
     Ok(Spec::from_row(row))
 }
 
-/// Get a spec by ID or title.
+/// Get a spec by ID, ID prefix, or title.
 pub fn get_spec(pool: &DbPool, project_id: &str, identifier: &str) -> CwaResult<Spec> {
-    // Try by ID first, then by title
+    // Try exact ID first
     match queries::get_spec(pool, identifier) {
-        Ok(row) => Ok(Spec::from_row(row)),
-        Err(cwa_db::DbError::NotFound(_)) => {
-            let row = queries::get_spec_by_title(pool, project_id, identifier)
-                .map_err(|_| CwaError::SpecNotFound(identifier.to_string()))?;
-            Ok(Spec::from_row(row))
-        }
-        Err(e) => Err(e.into()),
+        Ok(row) => return Ok(Spec::from_row(row)),
+        Err(cwa_db::DbError::NotFound(_)) => {}
+        Err(e) => return Err(e.into()),
     }
+    // Try ID prefix match
+    match queries::get_spec_by_id_prefix(pool, identifier) {
+        Ok(row) => return Ok(Spec::from_row(row)),
+        Err(cwa_db::DbError::NotFound(_)) => {}
+        Err(e) => return Err(e.into()),
+    }
+    // Try by title
+    let row = queries::get_spec_by_title(pool, project_id, identifier)
+        .map_err(|_| CwaError::SpecNotFound(identifier.to_string()))?;
+    Ok(Spec::from_row(row))
 }
 
 /// List all specs for a project.

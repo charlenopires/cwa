@@ -89,6 +89,40 @@ pub fn get_spec(pool: &DbPool, id: &str) -> DbResult<SpecRow> {
     })
 }
 
+/// Get a spec by ID prefix (for short-ID lookup).
+pub fn get_spec_by_id_prefix(pool: &DbPool, prefix: &str) -> DbResult<SpecRow> {
+    pool.with_conn(|conn| {
+        let pattern = format!("{}%", prefix);
+        let mut stmt = conn.prepare(
+            "SELECT id, project_id, title, description, status, priority,
+                    acceptance_criteria, dependencies, created_at, updated_at, archived_at
+             FROM specs WHERE id LIKE ?1",
+        )?;
+        let mut rows = stmt.query(params![pattern])?;
+        let first = rows.next()?.ok_or_else(|| DbError::NotFound(format!("Spec: {}", prefix)))?;
+        let spec = SpecRow {
+            id: first.get(0)?,
+            project_id: first.get(1)?,
+            title: first.get(2)?,
+            description: first.get(3)?,
+            status: first.get(4)?,
+            priority: first.get(5)?,
+            acceptance_criteria: first.get(6)?,
+            dependencies: first.get(7)?,
+            created_at: first.get(8)?,
+            updated_at: first.get(9)?,
+            archived_at: first.get(10)?,
+        };
+        if rows.next()?.is_some() {
+            return Err(DbError::NotFound(format!(
+                "Spec prefix '{}' is ambiguous (matches multiple specs)",
+                prefix
+            )));
+        }
+        Ok(spec)
+    })
+}
+
 /// Get spec by title (for name-based lookup).
 pub fn get_spec_by_title(pool: &DbPool, project_id: &str, title: &str) -> DbResult<SpecRow> {
     pool.with_conn(|conn| {
