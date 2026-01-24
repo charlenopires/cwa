@@ -220,7 +220,7 @@ const HEADER: &str = r#"# CWA Software Planning Document
 
 > **INSTRUCTIONS FOR CLAUDE:**
 >
-> 1. **Do NOT write any code.** Your role is to plan, ask questions, and structure.
+> 1. **Do NOT write any code.** Your role is to plan, ask questions, and generate CWA commands.
 > 2. Read the user's prompt below carefully.
 > 3. Ask 3-5 clarifying questions about:
 >    - Target users and their primary workflows
@@ -228,308 +228,204 @@ const HEADER: &str = r#"# CWA Software Planning Document
 >    - Scale expectations (users, data volume, performance)
 >    - Integration requirements (APIs, databases, auth providers)
 >    - Non-functional requirements (security, monitoring, compliance)
-> 4. Based on the user's answers, fill in ALL sections below.
-> 5. After the user approves, output the **completed document as a single markdown**.
-> 6. The user will use this document in **Claude Code** with CWA to execute the plan.
+> 4. Based on the user's answers, think through the sections below internally.
+> 5. **YOUR FINAL OUTPUT MUST BE A SINGLE MARKDOWN WITH ONLY EXECUTABLE CWA CLI COMMANDS.**
+>    - Do NOT output descriptive sections (no "SPEC-1: Title" with bullet points).
+>    - Output ONLY the `CWA Bootstrap Commands` section as a bash code block.
+>    - ALL placeholders MUST be replaced with actual project data.
+>    - Each command must be complete, copy-pasteable, and runnable in Claude Code.
+> 6. The user will paste this output directly into **Claude Code** terminal.
 >
-> **IMPORTANT:** Every section must be filled. Use your best judgment for details
-> the user doesn't specify. The goal is a complete, actionable planning document
-> that prevents context fragmentation across development sessions.
+> **OUTPUT FORMAT RULES:**
+> - The final output is a single ```bash code block with all commands.
+> - Use the 10-phase workflow structure shown in the template below.
+> - Replace ALL `[placeholders]` with real data derived from the user's answers.
+> - Specs MUST include `--description`, `--priority`, and multiple `-c` flags with real criteria.
+> - Glossary terms MUST use real domain-specific terms from the project.
+> - Decisions MUST include real technology choices and rationale.
+> - DO NOT include phases that are not relevant (e.g., skip infra if not needed).
+> - DO NOT abbreviate — include ALL specs, ALL criteria, ALL terms, ALL decisions.
 
 "#;
 
 const TEMPLATE_SECTIONS: &str = r#"
 ---
 
-## Project Overview
+## Internal Planning (use as reasoning scaffold — DO NOT include in final output)
 
-- **Name**: [Project name — derive from prompt]
-- **Description**: [2-3 sentence summary of what the software does]
-- **Target Users**: [Who uses this and why]
-- **Tech Stack**: [Language, framework, database, deployment target]
-- **Key Constraints**: [Performance, security, compliance requirements]
+Think through these sections to derive the commands, but DO NOT output them:
 
----
-
-## Bounded Contexts (DDD)
-
-Identify the major responsibility boundaries in this system. Each context owns its data and logic.
-
-### Context: [Name]
-
-- **Responsibility**: [What this context exclusively owns]
-- **Key Entities**: [Primary domain objects]
-- **Upstream Dependencies**: [Contexts it consumes from]
-- **Downstream Consumers**: [Contexts that consume from it]
-
-_(Repeat for each bounded context identified)_
+- **Project Overview**: Name, description, tech stack, constraints
+- **Bounded Contexts**: Major responsibility boundaries, key entities
+- **Domain Model**: Entities, value objects, aggregates, invariants, events, services
+- **Glossary**: Domain-specific terms with precise definitions
+- **Architectural Decisions**: Technology choices with rationale
+- **Specifications**: Features with testable acceptance criteria
+- **Task Breakdown**: One task per criterion
 
 ---
 
-## Specifications
+## YOUR OUTPUT — CWA Bootstrap Commands
 
-Each spec represents a distinct feature or capability. Include clear, testable acceptance criteria.
+**This is the ONLY section you output.** Replace ALL placeholders with real project data.
+Output as a single markdown document with bash code blocks. Include all 10 phases.
 
-### SPEC-1: [Feature Title]
-
-- **Priority**: [critical | high | medium | low]
-- **Description**: [What this feature does and why it exists]
-- **Acceptance Criteria**:
-  - [ ] [Given/When/Then or clear testable statement]
-  - [ ] [Criterion 2]
-  - [ ] [Criterion 3]
-- **Dependencies**: [Other spec IDs this depends on, if any]
-
-_(Repeat for each specification)_
-
----
-
-## Domain Model
-
-For each bounded context, define the domain objects:
-
-### [Context Name] Domain
-
-**Entities** (identity-bearing objects):
-- `EntityName` — [description]
-  - Properties: `property_name: type`, ...
-  - Invariants: [business rules that must always hold]
-  - Behaviors: [key operations]
-
-**Value Objects** (immutable, no identity):
-- `VOName` — [description, properties]
-
-**Aggregates** (consistency boundaries):
-- `AggregateName` — root: `EntityName`, contains: [child entities]
-
-**Domain Events** (things that happen):
-- `EventName` — [trigger condition, payload, consumers]
-
-**Domain Services** (stateless operations):
-- `ServiceName` — [what it coordinates]
-
----
-
-## Glossary (Ubiquitous Language)
-
-| Term | Definition | Context |
-|------|-----------|---------|
-| [Term] | [Precise, unambiguous definition] | [Bounded context] |
-
-_(Include all domain-specific terms to ensure team alignment)_
-
----
-
-## Architectural Decisions
-
-### ADR-1: [Decision Title]
-
-- **Status**: proposed
-- **Context**: [Problem or force driving this decision]
-- **Decision**: [What was decided and why]
-- **Alternatives Considered**: [Other options and why rejected]
-- **Consequences**: [Trade-offs accepted, follow-up actions needed]
-
-_(Repeat for major architectural choices)_
-
----
-
-## Task Breakdown
-
-Group tasks by spec. Each task should be independently implementable.
-
-### Tasks for SPEC-1: [Spec Title]
-
-1. [ ] [Task title] — [brief scope description]
-2. [ ] [Task title] — [brief scope description]
-3. [ ] [Task title] — [brief scope description]
-
-_(Repeat for each spec)_
-
----
-
-## CWA Bootstrap Commands
-
-Copy-paste these commands into Claude Code to initialize the full project workflow:
+### Example output (for a "Session Manager" Chrome extension):
 
 ```bash
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 1: INITIALIZE PROJECT
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa init "[project-name]"
-cd [project-name]
+cwa init "session-manager"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 2: INFRASTRUCTURE (optional — enables Knowledge Graph + Semantic Memory)
+# Skip if project doesn't need graph queries or semantic search
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa infra up              # Starts Neo4j, Qdrant, Ollama
-cwa infra status          # Verify all services healthy
+cwa infra up
+cwa infra status
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 3: DOMAIN MODELING — Bounded Contexts
-# Define the major responsibility boundaries of the system
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa domain context new "[context-name-1]" --description "[What this context exclusively owns]"
-cwa domain context new "[context-name-2]" --description "[What this context exclusively owns]"
-# ... one per bounded context
+cwa domain context new "Session" --description "Gerenciamento do ciclo de vida de sessões de abas"
+cwa domain context new "Tab" --description "Captura e representação de abas individuais do navegador"
+cwa domain context new "Tag" --description "Categorização e filtragem de sessões via tags coloridas"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 4: DOMAIN GLOSSARY — Ubiquitous Language
-# Record domain-specific terms to ensure consistent language across the project
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa memory add "[Term]: [Precise definition in project context]" --type fact
-cwa memory add "[Term]: [Precise definition in project context]" --type fact
-# ... one per domain term
+cwa memory add "Session: Snapshot nomeado de um conjunto de abas abertas em um dado momento" --type fact
+cwa memory add "Tab: Representação de uma aba do navegador com URL, título, favicon e estado" --type fact
+cwa memory add "Tag: Rótulo colorido para categorizar e filtrar sessões" --type fact
+cwa memory add "Restore: Ação de reabrir todas as abas de uma sessão salva" --type fact
+cwa memory add "Pin: Estado de fixação de uma aba na barra do navegador" --type fact
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 5: ARCHITECTURAL DECISIONS
-# Record early design choices with rationale (prevents re-debating later)
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa memory add "Using [technology] for [purpose] because [rationale]. Alternatives considered: [alternatives]" --type decision
-cwa memory add "Architecture: [pattern/style] because [rationale]" --type decision
-# ... one per architectural decision
+cwa memory add "Usando Chrome Storage API (sync) para persistência porque permite sincronização entre dispositivos e tem 100KB de espaço. Alternativa descartada: IndexedDB (não sincroniza)" --type decision
+cwa memory add "Arquitetura: Manifest V3 com Service Worker porque é o padrão atual do Chrome e obrigatório para novas extensões. Background pages foram depreciadas" --type decision
+cwa memory add "UI: React + TailwindCSS no popup porque permite componentização e desenvolvimento rápido. Alternativa descartada: Vanilla JS (mais complexo para UI reativa)" --type decision
+cwa memory add "Usando UUID v4 para IDs de sessões porque garante unicidade sem coordenação. Alternativa: timestamp (risco de colisão em salvamentos rápidos)" --type decision
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 6: SPECIFICATIONS — Features with Acceptance Criteria
-# Each spec is a distinct feature. Criteria must be clear and testable.
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa spec new "[Feature Title]" \
-  --description "[What this feature does and why it matters]" \
-  --priority [critical|high|medium|low] \
-  -c "[Criterion 1 — testable statement]" \
-  -c "[Criterion 2 — testable statement]" \
-  -c "[Criterion 3 — testable statement]" \
-  -c "[Criterion 4 — testable statement]"
+cwa spec new "Session Save" \
+  --description "Salvamento de sessões capturando todas as abas abertas com seus metadados" \
+  --priority critical \
+  -c "Usuário pode salvar sessão atual com nome personalizado" \
+  -c "Sistema captura URL, título e favicon de cada aba" \
+  -c "Sistema preserva estado de pin de cada aba" \
+  -c "Sistema preserva ordem das abas" \
+  -c "Sessão salva inclui timestamp de criação" \
+  -c "Sistema previne nomes de sessão duplicados" \
+  -c "Feedback visual confirma salvamento com sucesso"
 
-cwa spec new "[Feature Title]" \
-  --description "[What this feature does and why it matters]" \
-  --priority [critical|high|medium|low] \
-  -c "[Criterion 1]" \
-  -c "[Criterion 2]" \
-  -c "[Criterion 3]"
+cwa spec new "Session List" \
+  --description "Visualização e gerenciamento da lista de sessões salvas" \
+  --priority critical \
+  -c "Usuário visualiza lista de todas as sessões salvas" \
+  -c "Cada sessão exibe nome, data e quantidade de abas" \
+  -c "Usuário pode renomear uma sessão existente" \
+  -c "Usuário pode excluir sessão com confirmação" \
+  -c "Lista ordenada por data de criação (mais recente primeiro)" \
+  -c "Busca por texto filtra sessões pelo nome"
 
-# ... repeat for each specification
+cwa spec new "Session Restore" \
+  --description "Restauração de sessões salvas reabrindo todas as abas com propriedades originais" \
+  --priority critical \
+  -c "Usuário pode restaurar todas as abas de uma sessão" \
+  -c "Opção de restaurar em nova janela" \
+  -c "Opção de restaurar na janela atual" \
+  -c "Sistema preserva estado de pin das abas restauradas" \
+  -c "Sistema preserva ordem original das abas" \
+  -c "Feedback visual de progresso durante restauração" \
+  -c "Tratamento de URLs inválidas ou inacessíveis com aviso"
+
+cwa spec new "Tag Management" \
+  --description "Sistema de tags coloridas para categorização de sessões" \
+  --priority medium \
+  -c "Usuário pode criar nova tag com nome e cor" \
+  -c "Sistema oferece paleta de cores predefinidas para tags" \
+  -c "Usuário pode editar nome e cor de tag existente" \
+  -c "Usuário pode excluir tag (remove de todas sessões associadas)" \
+  -c "Tags são exibidas como badges coloridos nas sessões" \
+  -c "Sistema previne tags com nomes duplicados" \
+  -c "Nome da tag tem limite de 30 caracteres"
+
+cwa spec new "Tag Filtering" \
+  --description "Filtragem de sessões por tags para localização rápida" \
+  --priority medium \
+  -c "Usuário pode filtrar lista de sessões por uma ou mais tags" \
+  -c "Filtro por múltiplas tags usa lógica OR (sessões com qualquer tag selecionada)" \
+  -c "Usuário pode combinar filtro de tags com busca por texto" \
+  -c "Tags ativas no filtro são destacadas visualmente" \
+  -c "Botão limpar filtros remove todos os filtros ativos" \
+  -c "Contador exibe quantidade de sessões após filtro aplicado"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 7: GENERATE TASKS FROM SPECS
-# Auto-creates one task per acceptance criterion, populating the Kanban board
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa task generate "[spec-title-1]"
-cwa task generate "[spec-title-2]"
-# ... one per spec
+cwa task generate "Session Save"
+cwa task generate "Session List"
+cwa task generate "Session Restore"
+cwa task generate "Tag Management"
+cwa task generate "Tag Filtering"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 8: KNOWLEDGE GRAPH SYNC
-# Syncs all entities to Neo4j for impact analysis and relationship queries
 # ═══════════════════════════════════════════════════════════════════════════════
 cwa graph sync
-cwa graph status          # Verify nodes and relationships created
+cwa graph status
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 9: GENERATE CLAUDE CODE ARTIFACTS
-# Creates agents, skills, hooks, commands, rules, and CLAUDE.md
 # ═══════════════════════════════════════════════════════════════════════════════
 cwa codegen all
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 10: VERIFY & ANALYZE
-# Confirm everything is set up correctly and within token budget
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa spec list              # All specs with status and priority
-cwa task board             # Kanban board with WIP limits
-cwa domain context list    # Bounded contexts
-cwa context status         # Project focus summary
-cwa tokens analyze --all   # Token budget across all context files
-cwa tokens optimize        # Suggestions to stay within model window
+cwa spec list
+cwa task board
+cwa domain context list
+cwa context status
+cwa tokens analyze --all
 ```
+
+**END OF EXAMPLE.** Now generate the commands for the user's prompt below, following the same format with ALL 10 phases and real project data.
 
 ---
 
 ## Claude Code Development Workflow
 
-After bootstrapping, follow this workflow in each Claude Code session:
+After the user executes the bootstrap commands, they use this workflow in Claude Code:
 
 ### Session Start
 ```bash
-# Claude Code automatically reads CLAUDE.md and .claude/ artifacts
-# Check current project state:
-cwa context status                     # Quick overview of focus and progress
-cwa task board                         # See the Kanban board
+cwa context status                     # Quick overview
+cwa task board                         # See Kanban board
 ```
 
-### Pick and Start Work
+### Work Cycle
 ```bash
-cwa task move [task-id] in_progress    # Claim a task (respects WIP limit of 1)
-# Claude reads the spec via MCP tool cwa_get_spec
-# Tester agent writes tests from acceptance criteria first
-# Implementer agent writes code to pass tests
-```
-
-### During Implementation
-```bash
-# Record structured observations as you work:
+cwa task move [task-id] in_progress    # Claim a task (WIP limit: 1)
+# Implement following spec acceptance criteria
 cwa memory observe "[what happened]" -t bugfix -f "[root cause]"
-cwa memory observe "[what you discovered]" -t discovery -f "[key fact]"
-cwa memory observe "[refactoring done]" -t refactor --files-modified src/foo.rs
-
-# Record architectural decisions with rationale:
-cwa memory add "[Decision with full rationale]" --type decision
-
-# Check impact before changing a domain entity:
-cwa graph impact context [context-id]  # What specs/tasks/decisions are affected?
-cwa graph impact spec [spec-id]        # What tasks implement this spec?
-
-# Search past knowledge:
-cwa memory search "[query]"            # Semantic search across all memory
-cwa memory timeline --days 7           # Recent observations timeline
-```
-
-### Complete Task
-```bash
-cwa task move [task-id] review         # Move to review
-# Reviewer agent validates against acceptance criteria
-cwa task move [task-id] done           # Mark complete
+cwa memory observe "[discovery]" -t discovery -f "[key fact]"
+cwa memory add "[Decision with rationale]" --type decision
+cwa graph impact spec [spec-id]        # Check impact before changes
+cwa task move [task-id] done           # Complete task
 ```
 
 ### End of Session
 ```bash
-# Record session insights:
-cwa memory observe "[session summary]" -t insight -f "[key learning]"
-
-# Regenerate artifacts with updated state:
-cwa codegen all                        # Updates CLAUDE.md, agents, skills, hooks
-
-# Verify token budget:
-cwa tokens analyze --all               # Ensure context fits model window
-
-# Sync knowledge graph:
-cwa graph sync                         # Update relationships in Neo4j
-
-# If UI work was done, capture design system:
-cwa design from-image [screenshot-url] # Extract design tokens from UI
+cwa memory observe "[session summary]" -t insight -f "[learning]"
+cwa codegen all                        # Regenerate artifacts
+cwa graph sync                         # Update knowledge graph
+cwa tokens analyze --all               # Verify token budget
 ```
-
-### Key MCP Tools Reference
-
-| Tool | Phase | When to Use |
-|------|-------|-------------|
-| `cwa_get_context_summary` | Start | Quick project state overview |
-| `cwa_get_current_task` | Work | Check what you're working on |
-| `cwa_get_spec` | Work | Read acceptance criteria |
-| `cwa_get_domain_model` | Work | Check entity definitions and invariants |
-| `cwa_update_task_status` | Work | Move tasks through workflow |
-| `cwa_observe` | Work | Record bugfix, discovery, feature, refactor |
-| `cwa_add_decision` | Work | Record architectural decisions with ADR |
-| `cwa_search_memory` | Any | Recall past observations and patterns |
-| `cwa_memory_semantic_search` | Any | Vector similarity search across memory |
-| `cwa_memory_timeline` | Start | Compact timeline of recent activity |
-| `cwa_graph_impact` | Design | Analyze impact of entity changes |
-| `cwa_graph_sync` | End | Sync SQLite to Neo4j |
-| `cwa_generate_tasks` | Plan | Auto-create tasks from spec criteria |
-| `cwa_create_spec` | Plan | Create spec with criteria via MCP |
-| `cwa_create_context` | Plan | Create bounded context via MCP |
-| `cwa_create_task` | Plan | Create individual task via MCP |
-| `cwa_get_next_steps` | Start | Get suggested next actions |
-| `cwa_memory_add` | Any | Store facts, preferences, patterns |
 
 "#;
