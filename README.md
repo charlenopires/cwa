@@ -247,6 +247,7 @@ All CLI commands are documented in the [CLI Reference](#cli-reference) section b
 cwa init <name> [--from-prompt <prompt>]   # Initialize new project
 cwa context status                          # View current project focus
 cwa context summary                         # View context summary
+cwa clean [--confirm] [--infra]             # Clean project (start fresh)
 ```
 
 **Example:**
@@ -634,10 +635,19 @@ Manages Neo4j, Qdrant, and Ollama containers.
 
 ```bash
 cwa infra up                       # Start all services + pull model
-cwa infra down                     # Stop services
+cwa infra down                     # Stop services (keep data)
+cwa infra down --clean             # Stop + remove volumes + remove images
 cwa infra status                   # Health check
 cwa infra logs [service] [--follow]  # View logs
 cwa infra reset --confirm          # Destroy all data + volumes
+```
+
+### Project Cleanup
+
+```bash
+cwa clean                          # Preview what will be removed
+cwa clean --confirm                # Remove .cwa/, .claude/, CLAUDE.md, .mcp.json
+cwa clean --confirm --infra        # Also remove Docker infrastructure
 ```
 
 **Example:**
