@@ -172,10 +172,14 @@ RULES:
 2. After the user answers, create a SINGLE MARKDOWN ARTIFACT (document) titled "CWA Bootstrap — [project-name]".
 3. The artifact content must be ONLY a bash code block with CWA commands. Nothing else before or after it.
 4. NO descriptions, NO bullet points, NO markdown sections, NO explanations — ONLY the ```bash block.
-5. Follow the 10-phase structure shown in the example below.
+5. Follow the 8-phase structure shown in the example below (NO task generation phase).
 6. ALL data must be real (derived from the user's answers), NOT placeholders.
 7. Include ALL specs with ALL acceptance criteria. Do NOT abbreviate.
 8. The user will copy the content of this artifact directly into Claude Code terminal.
+9. IMPORTANT: Chain related commands with && so user can paste and run all at once:
+   - All "cwa domain context new" commands must end with " && \"
+   - All "cwa memory add" commands must end with " && \"
+   - The LAST command in each chain should NOT have && (just the command)
 
 "#;
 
@@ -228,27 +232,27 @@ cwa infra status
 # docker compose -f .cwa/docker/docker-compose.yml up -d postgres
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 3: DOMAIN MODELING — Bounded Contexts
+# PHASE 3: DOMAIN MODELING — Bounded Contexts (chained with &&)
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa domain context new "Session" --description "Gerenciamento do ciclo de vida de sessões de abas"
-cwa domain context new "Tab" --description "Captura e representação de abas individuais do navegador"
+cwa domain context new "Session" --description "Gerenciamento do ciclo de vida de sessões de abas" && \
+cwa domain context new "Tab" --description "Captura e representação de abas individuais do navegador" && \
 cwa domain context new "Tag" --description "Categorização e filtragem de sessões via tags coloridas"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 4: DOMAIN GLOSSARY — Ubiquitous Language
+# PHASE 4: DOMAIN GLOSSARY — Ubiquitous Language (chained with &&)
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa memory add "Session: Snapshot nomeado de um conjunto de abas abertas em um dado momento" --type fact
-cwa memory add "Tab: Representação de uma aba do navegador com URL, título, favicon e estado" --type fact
-cwa memory add "Tag: Rótulo colorido para categorizar e filtrar sessões" --type fact
-cwa memory add "Restore: Ação de reabrir todas as abas de uma sessão salva" --type fact
+cwa memory add "Session: Snapshot nomeado de um conjunto de abas abertas em um dado momento" --type fact && \
+cwa memory add "Tab: Representação de uma aba do navegador com URL, título, favicon e estado" --type fact && \
+cwa memory add "Tag: Rótulo colorido para categorizar e filtrar sessões" --type fact && \
+cwa memory add "Restore: Ação de reabrir todas as abas de uma sessão salva" --type fact && \
 cwa memory add "Pin: Estado de fixação de uma aba na barra do navegador" --type fact
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 5: ARCHITECTURAL DECISIONS
+# PHASE 5: ARCHITECTURAL DECISIONS (chained with &&)
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa memory add "Usando Chrome Storage API (sync) para persistência porque permite sincronização entre dispositivos e tem 100KB de espaço. Alternativa descartada: IndexedDB (não sincroniza)" --type decision
-cwa memory add "Arquitetura: Manifest V3 com Service Worker porque é o padrão atual do Chrome e obrigatório para novas extensões. Background pages foram depreciadas" --type decision
-cwa memory add "UI: React + TailwindCSS no popup porque permite componentização e desenvolvimento rápido. Alternativa descartada: Vanilla JS (mais complexo para UI reativa)" --type decision
+cwa memory add "Usando Chrome Storage API (sync) para persistência porque permite sincronização entre dispositivos e tem 100KB de espaço. Alternativa descartada: IndexedDB (não sincroniza)" --type decision && \
+cwa memory add "Arquitetura: Manifest V3 com Service Worker porque é o padrão atual do Chrome e obrigatório para novas extensões. Background pages foram depreciadas" --type decision && \
+cwa memory add "UI: React + TailwindCSS no popup porque permite componentização e desenvolvimento rápido. Alternativa descartada: Vanilla JS (mais complexo para UI reativa)" --type decision && \
 cwa memory add "Usando UUID v4 para IDs de sessões porque garante unicidade sem coordenação. Alternativa: timestamp (risco de colisão em salvamentos rápidos)" --type decision
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -308,35 +312,20 @@ cwa spec new "Tag Filtering" \
   -c "Contador exibe quantidade de sessões após filtro aplicado"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 7: GENERATE TASKS FROM SPECS
+# PHASE 7: KNOWLEDGE GRAPH SYNC
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa task generate "Session Save"
-cwa task generate "Session List"
-cwa task generate "Session Restore"
-cwa task generate "Tag Management"
-cwa task generate "Tag Filtering"
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 8: KNOWLEDGE GRAPH SYNC
-# ═══════════════════════════════════════════════════════════════════════════════
-cwa graph sync
+cwa graph sync && \
 cwa graph status
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 9: GENERATE CLAUDE CODE ARTIFACTS
+# PHASE 8: GENERATE CLAUDE CODE ARTIFACTS & VERIFY
 # ═══════════════════════════════════════════════════════════════════════════════
-cwa codegen all
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 10: VERIFY & ANALYZE
-# ═══════════════════════════════════════════════════════════════════════════════
-cwa spec list
-cwa task board
-cwa domain context list
+cwa codegen all && \
+cwa spec list && \
+cwa domain context list && \
 cwa context status
-cwa tokens analyze --all
 ```
 
-END OF EXAMPLE. Now generate commands for the user's prompt below. Same format. All 10 phases. Real data only.
+END OF EXAMPLE. Now generate commands for the user's prompt below. Same format. All 8 phases. Real data only. Chain commands with && as shown.
 
 "#;
