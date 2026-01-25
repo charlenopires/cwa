@@ -41,7 +41,7 @@ pub struct AddArgs {
     pub content: String,
 
     /// Entry type (preference, decision, fact, pattern)
-    #[arg(long, short = 't', default_value = "fact")]
+    #[arg(long = "type", short = 't', default_value = "fact")]
     pub entry_type: String,
 
     /// Context for the memory

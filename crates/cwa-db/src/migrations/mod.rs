@@ -11,6 +11,7 @@ pub fn run_migrations(pool: &DbPool) -> DbResult<()> {
         M::up(include_str!("003_memories_sync.sql")),
         M::up(include_str!("004_design_systems.sql")),
         M::up(include_str!("005_observations.sql")),
+        M::up(include_str!("006_memories_entry_type.sql")),
     ]);
 
     pool.with_conn_mut(|conn| {
