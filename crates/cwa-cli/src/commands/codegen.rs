@@ -66,7 +66,7 @@ pub async fn execute(cmd: CodegenCommands, project_dir: &Path) -> Result<()> {
             }
         }
         CodegenCommands::Skill { spec_id, dry_run } => {
-            cmd_skill(&pool, &spec_id, project_dir, dry_run)
+            cmd_skill(&pool, &project.id, &spec_id, project_dir, dry_run)
         }
         CodegenCommands::Hooks { dry_run } => {
             cmd_hooks(&pool, &project.id, project_dir, dry_run)
@@ -121,8 +121,8 @@ fn cmd_agents_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, d
     Ok(())
 }
 
-fn cmd_skill(pool: &cwa_db::DbPool, spec_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
-    let skill = cwa_codegen::generate_skill(pool, spec_id)?;
+fn cmd_skill(pool: &cwa_db::DbPool, project_id: &str, spec_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
+    let skill = cwa_codegen::generate_skill(pool, project_id, spec_id)?;
 
     if dry_run {
         println!("{} Would generate: .claude/skills/{}/{}", "→".dimmed(), skill.dirname, skill.filename);

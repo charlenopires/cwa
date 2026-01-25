@@ -19,8 +19,8 @@ pub struct GeneratedSkill {
 }
 
 /// Generate a skill from a spec.
-pub fn generate_skill(db: &DbPool, spec_id: &str) -> Result<GeneratedSkill> {
-    let spec = cwa_db::queries::specs::get_spec(db, spec_id)
+pub fn generate_skill(db: &DbPool, project_id: &str, spec_id: &str) -> Result<GeneratedSkill> {
+    let spec = cwa_core::spec::get_spec(db, project_id, spec_id)
         .map_err(|e| anyhow::anyhow!("Spec not found: {}", e))?;
 
     let slug = slugify(&spec.title);
@@ -35,31 +35,25 @@ pub fn generate_skill(db: &DbPool, spec_id: &str) -> Result<GeneratedSkill> {
         content.push_str(&format!("{}\n\n", desc));
     }
 
-    content.push_str(&format!("**Priority:** {}\n", spec.priority));
-    content.push_str(&format!("**Status:** {}\n\n", spec.status));
+    content.push_str(&format!("**Priority:** {:?}\n", spec.priority));
+    content.push_str(&format!("**Status:** {:?}\n\n", spec.status));
 
     // Acceptance criteria
-    if let Some(ref criteria_json) = spec.acceptance_criteria {
-        if let Ok(criteria) = serde_json::from_str::<Vec<String>>(criteria_json) {
-            content.push_str("## Acceptance Criteria\n\n");
-            for (i, criterion) in criteria.iter().enumerate() {
-                content.push_str(&format!("{}. {}\n", i + 1, criterion));
-            }
-            content.push('\n');
+    if !spec.acceptance_criteria.is_empty() {
+        content.push_str("## Acceptance Criteria\n\n");
+        for (i, criterion) in spec.acceptance_criteria.iter().enumerate() {
+            content.push_str(&format!("{}. {}\n", i + 1, criterion));
         }
+        content.push('\n');
     }
 
     // Dependencies
-    if let Some(ref deps_json) = spec.dependencies {
-        if let Ok(deps) = serde_json::from_str::<Vec<String>>(deps_json) {
-            if !deps.is_empty() {
-                content.push_str("## Dependencies\n\n");
-                for dep in &deps {
-                    content.push_str(&format!("- {}\n", dep));
-                }
-                content.push('\n');
-            }
+    if !spec.dependencies.is_empty() {
+        content.push_str("## Dependencies\n\n");
+        for dep in &spec.dependencies {
+            content.push_str(&format!("- {}\n", dep));
         }
+        content.push('\n');
     }
 
     // Implementation steps (generated from title + description)
@@ -87,7 +81,7 @@ pub fn generate_all_skills(db: &DbPool, project_id: &str) -> Result<Vec<Generate
     for spec in &specs {
         // Only generate skills for active/approved specs
         if spec.status == "active" || spec.status == "approved" {
-            skills.push(generate_skill(db, &spec.id)?);
+            skills.push(generate_skill(db, project_id, &spec.id)?);
         }
     }
 
