@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 pub mod analyze;
+pub mod clean;
 pub mod codegen;
 pub mod context;
 pub mod design;
@@ -92,6 +93,9 @@ pub enum Commands {
     /// Docker infrastructure management
     #[command(subcommand)]
     Infra(infra::InfraCommands),
+
+    /// Clean project (remove .cwa, .claude, CLAUDE.md, .mcp.json)
+    Clean(clean::CleanArgs),
 }
 
 impl Cli {
@@ -115,6 +119,7 @@ impl Cli {
             Commands::Codegen(cmd) => codegen::execute(cmd, &project_dir).await,
             Commands::Tokens(cmd) => tokens::execute(cmd, &project_dir).await,
             Commands::Infra(cmd) => infra::execute(cmd, &project_dir).await,
+            Commands::Clean(args) => clean::execute(args, &project_dir).await,
         }
     }
 }

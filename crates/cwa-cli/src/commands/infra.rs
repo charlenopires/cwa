@@ -12,7 +12,11 @@ pub enum InfraCommands {
     Up,
 
     /// Stop Docker infrastructure
-    Down,
+    Down {
+        /// Also remove volumes (data) and images
+        #[arg(long)]
+        clean: bool,
+    },
 
     /// Show status of all services
     Status,
@@ -49,7 +53,7 @@ const SERVICES: &[ServiceInfo] = &[
 pub async fn execute(cmd: InfraCommands, project_dir: &Path) -> Result<()> {
     match cmd {
         InfraCommands::Up => cmd_up(project_dir).await,
-        InfraCommands::Down => cmd_down(project_dir),
+        InfraCommands::Down { clean } => cmd_down(project_dir, clean),
         InfraCommands::Status => cmd_status().await,
         InfraCommands::Logs { service, follow } => cmd_logs(project_dir, service, follow),
         InfraCommands::Reset { confirm } => cmd_reset(project_dir, confirm),
@@ -144,21 +148,44 @@ async fn cmd_up(project_dir: &Path) -> Result<()> {
 }
 
 /// Stop all infrastructure services.
-fn cmd_down(project_dir: &Path) -> Result<()> {
+fn cmd_down(project_dir: &Path, clean: bool) -> Result<()> {
     let compose_file = find_compose_file(project_dir)?;
 
-    println!("{}", "Stopping CWA infrastructure...".bold());
+    if clean {
+        println!("{}", "Stopping and removing CWA infrastructure...".bold());
 
-    let status = Command::new("docker")
-        .args(["compose", "-f", compose_file.to_str().unwrap(), "down"])
-        .status()
-        .context("Failed to run 'docker compose'")?;
+        // Stop containers and remove volumes
+        let status = Command::new("docker")
+            .args(["compose", "-f", compose_file.to_str().unwrap(), "down", "-v", "--rmi", "all"])
+            .status()
+            .context("Failed to run 'docker compose'")?;
 
-    if !status.success() {
-        bail!("docker compose down failed");
+        if !status.success() {
+            bail!("docker compose down failed");
+        }
+
+        // Also remove any orphan containers with cwa- prefix
+        let _ = Command::new("docker")
+            .args(["rm", "-f", "cwa-neo4j", "cwa-qdrant", "cwa-ollama"])
+            .status();
+
+        println!("{}", "Infrastructure stopped, volumes and images removed.".green());
+    } else {
+        println!("{}", "Stopping CWA infrastructure...".bold());
+
+        let status = Command::new("docker")
+            .args(["compose", "-f", compose_file.to_str().unwrap(), "down"])
+            .status()
+            .context("Failed to run 'docker compose'")?;
+
+        if !status.success() {
+            bail!("docker compose down failed");
+        }
+
+        println!("{}", "Infrastructure stopped.".green());
+        println!("{}", "  Use --clean to also remove volumes and images".dimmed());
     }
 
-    println!("{}", "Infrastructure stopped.".green());
     Ok(())
 }
 
