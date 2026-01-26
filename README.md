@@ -676,19 +676,41 @@ cwa analyze market <niche>         # Analyze a market segment
 ### Servers
 
 ```bash
-cwa serve [--port <port>] [--host <host>]  # Start unified server (Web + MCP)
+cwa serve [--port <port>] [--host <host>]  # Start web server with live reload
 cwa serve --log                             # Enable logging to terminal and file
 cwa serve --log --log-file <path>           # Custom log file path
-cwa mcp stdio                              # Run standalone MCP server (no web UI)
+cwa mcp stdio                              # Run standalone MCP server
 cwa mcp planner                            # Run MCP planner server (Claude Desktop)
 cwa mcp status                             # Show MCP configuration examples
 ```
 
-**Unified Server (`cwa serve`):**
-- Runs both Web server (HTTP/WebSocket) and MCP server (stdio) concurrently
-- Shares broadcast channel for real-time updates between MCP and Web
-- When Claude Code updates tasks via MCP, the web board updates automatically
-- Use `--log` to see runtime logs in terminal (also saved to `.cwa/serve.log`)
+**Live Reload Architecture:**
+
+When Claude Code updates tasks via MCP, the web board updates automatically:
+
+```
+Claude Code → cwa mcp stdio → HTTP POST /internal/notify → WebSocket → Browser
+```
+
+- `cwa serve` runs the web server with WebSocket support
+- `cwa mcp stdio` (run by Claude Code) sends HTTP notifications to the web server
+- Web server broadcasts updates to all connected browsers via WebSocket
+- Dashboard automatically refreshes when it receives a WebSocket message
+
+**Usage:**
+```bash
+# Terminal 1: Start web server (default port 3030)
+cwa serve --log
+
+# Open browser: http://127.0.0.1:3030
+# Use Claude Code with MCP - board updates in real-time!
+```
+
+**Custom Port:** Set `CWA_WEB_URL` environment variable:
+```bash
+export CWA_WEB_URL=http://127.0.0.1:8080
+cwa serve --port 8080
+```
 
 ## Claude Code Integration
 
@@ -1003,17 +1025,18 @@ CWA generates a complete Claude Code configuration directory:
 Start with `cwa serve` and open `http://localhost:3030`.
 
 ```bash
-# Basic start
+# Start web server with live reload support
 cwa serve
 
 # With logging (see runtime logs in terminal)
 cwa serve --log
 
-# Custom port
+# Custom port (remember to set CWA_WEB_URL for MCP)
+export CWA_WEB_URL=http://127.0.0.1:8080
 cwa serve --port 8080
 ```
 
-The unified server runs both the Web server and MCP server together, sharing a broadcast channel. When Claude Code updates tasks via MCP tools, the web board updates automatically via WebSocket.
+**Live Reload:** When Claude Code updates tasks via MCP tools (`cwa_update_task_status`), the web board updates automatically. The MCP server sends HTTP notifications to the web server, which broadcasts to all connected browsers via WebSocket.
 
 ### REST API (`/api/*`)
 
