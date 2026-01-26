@@ -704,7 +704,9 @@ version = "0.4.1"
 dependencies = [
  "rusqlite",
  "rusqlite_migration",
+ "serde",
  "thiserror 2.0.18",
+ "tokio",
  "tracing",
 ]
 

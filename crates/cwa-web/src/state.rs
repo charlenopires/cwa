@@ -1,29 +1,20 @@
 //! Application state.
 
-use cwa_db::DbPool;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::broadcast;
 
-/// WebSocket message types.
-#[derive(Clone, Serialize, Deserialize, Debug)]
-#[serde(tag = "type", content = "data")]
-pub enum WebSocketMessage {
-    TaskUpdated { task_id: String, status: String },
-    SpecUpdated { spec_id: String },
-    BoardRefresh,
-}
+// Re-export types for use in routes
+pub use cwa_db::{BroadcastSender, DbPool, WebSocketMessage};
 
 /// Application state shared across handlers.
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<DbPool>,
-    pub tx: broadcast::Sender<WebSocketMessage>,
+    pub tx: BroadcastSender,
 }
 
 impl AppState {
-    pub fn new(db: Arc<DbPool>) -> Self {
-        let (tx, _rx) = broadcast::channel(100);
+    /// Create new app state with a shared broadcast sender.
+    pub fn new(db: Arc<DbPool>, tx: BroadcastSender) -> Self {
         Self { db, tx }
     }
 

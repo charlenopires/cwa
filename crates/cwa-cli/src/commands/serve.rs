@@ -29,12 +29,11 @@ pub async fn execute(args: ServeArgs, project_dir: &Path) -> Result<()> {
     let db_path = project_dir.join(".cwa/cwa.db");
     let pool = Arc::new(cwa_db::init_pool(&db_path)?);
 
+    // Create shared broadcast channel for real-time updates
+    let tx = cwa_db::create_broadcast_channel();
+
     println!();
-    println!(
-        "  {} {}",
-        "CWA".cyan().bold(),
-        "Web Server".bold()
-    );
+    println!("  {} {}", "CWA".cyan().bold(), "Server".bold());
     println!();
     println!(
         "  {}  http://{}:{}",
@@ -54,6 +53,7 @@ pub async fn execute(args: ServeArgs, project_dir: &Path) -> Result<()> {
         args.host,
         args.port
     );
+    println!("  {}      stdio (JSON-RPC)", "MCP".green());
 
     if args.log {
         let log_path = args
@@ -61,18 +61,25 @@ pub async fn execute(args: ServeArgs, project_dir: &Path) -> Result<()> {
             .clone()
             .unwrap_or_else(|| project_dir.join(".cwa/serve.log"));
         println!();
-        println!(
-            "  {}    {}",
-            "Logging".yellow(),
-            log_path.display()
-        );
+        println!("  {}    {}", "Logging".yellow(), log_path.display());
     }
 
     println!();
     println!("  {}", "Ctrl+C to stop".dimmed());
     println!();
 
-    cwa_web::run_server(pool, args.port).await?;
+    // Run both servers concurrently with shared broadcast channel
+    let pool_mcp = pool.clone();
+    let tx_mcp = tx.clone();
+
+    tokio::select! {
+        result = cwa_web::run_server(pool, tx, args.port) => {
+            result?;
+        }
+        result = cwa_mcp::run_stdio_server(pool_mcp, Some(tx_mcp)) => {
+            result?;
+        }
+    }
 
     Ok(())
 }

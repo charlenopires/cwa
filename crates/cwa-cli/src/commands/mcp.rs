@@ -30,11 +30,13 @@ pub async fn execute(cmd: McpCommands, project_dir: &Path) -> Result<()> {
                 "server running (stdio)".bold()
             );
             eprintln!("  {} 24 tools | 5 resources", "▸".dimmed());
+            eprintln!("  {} Use 'cwa serve' for live WebSocket updates", "▸".dimmed());
             eprintln!("  {} Ctrl+C to stop", "▸".dimmed());
             eprintln!();
 
             let pool = Arc::new(cwa_db::init_pool(&db_path)?);
-            cwa_mcp::run_stdio_server(pool).await?;
+            // Running standalone - no broadcast channel (uses HTTP fallback)
+            cwa_mcp::run_stdio_server(pool, None).await?;
         }
 
         McpCommands::Planner => {

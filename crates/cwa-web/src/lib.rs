@@ -10,7 +10,7 @@ use axum::{
     routing::{delete, get, patch, post, put},
     Router,
 };
-use cwa_db::DbPool;
+use cwa_db::{BroadcastSender, DbPool};
 use std::sync::Arc;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -68,9 +68,9 @@ pub fn create_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// Run the web server.
-pub async fn run_server(db: Arc<DbPool>, port: u16) -> anyhow::Result<()> {
-    let state = AppState::new(db);
+/// Run the web server with a shared broadcast channel.
+pub async fn run_server(db: Arc<DbPool>, tx: BroadcastSender, port: u16) -> anyhow::Result<()> {
+    let state = AppState::new(db, tx);
     let app = create_router(state);
 
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await?;

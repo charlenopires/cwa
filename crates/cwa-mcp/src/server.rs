@@ -3,7 +3,7 @@
 //! Note: This is a simplified implementation. Full rmcp integration
 //! would require the actual rmcp crate which may have different APIs.
 
-use cwa_db::DbPool;
+use cwa_db::{BroadcastSender, DbPool, WebSocketMessage};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
 use std::sync::Arc;
@@ -55,7 +55,13 @@ struct Resource {
 }
 
 /// Run the MCP server over stdio.
-pub async fn run_stdio(pool: Arc<DbPool>) -> anyhow::Result<()> {
+///
+/// If `broadcast_tx` is provided, task updates will be broadcast directly
+/// to WebSocket clients (when running alongside the web server).
+pub async fn run_stdio(
+    pool: Arc<DbPool>,
+    broadcast_tx: Option<BroadcastSender>,
+) -> anyhow::Result<()> {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
 
@@ -88,7 +94,7 @@ pub async fn run_stdio(pool: Arc<DbPool>) -> anyhow::Result<()> {
             continue;
         }
 
-        let response = handle_request(&pool, request).await;
+        let response = handle_request(&pool, &broadcast_tx, request).await;
         writeln!(stdout, "{}", serde_json::to_string(&response)?)?;
         stdout.flush()?;
     }
@@ -96,11 +102,15 @@ pub async fn run_stdio(pool: Arc<DbPool>) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_request(pool: &DbPool, request: JsonRpcRequest) -> JsonRpcResponse {
+async fn handle_request(
+    pool: &DbPool,
+    broadcast_tx: &Option<BroadcastSender>,
+    request: JsonRpcRequest,
+) -> JsonRpcResponse {
     let result = match request.method.as_str() {
         "initialize" => handle_initialize(),
         "tools/list" => handle_tools_list(),
-        "tools/call" => handle_tool_call(pool, request.params).await,
+        "tools/call" => handle_tool_call(pool, broadcast_tx, request.params).await,
         "resources/list" => handle_resources_list(),
         "resources/read" => handle_resource_read(pool, request.params).await,
         _ => Err(JsonRpcError {
@@ -508,6 +518,7 @@ fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
 
 async fn handle_tool_call(
     pool: &DbPool,
+    broadcast_tx: &Option<BroadcastSender>,
     params: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError {
@@ -600,13 +611,21 @@ async fn handle_tool_call(
                     message: e.to_string(),
                 })?;
 
-            // Notify web server (fire and forget)
-            let notifier = crate::notifier::WebNotifier::new();
-            let tid = task_id.to_string();
-            let st = status.to_string();
-            tokio::spawn(async move {
-                notifier.notify_task_updated(&tid, &st).await;
-            });
+            // Broadcast to WebSocket clients (direct if available, HTTP fallback)
+            if let Some(tx) = broadcast_tx {
+                let _ = tx.send(WebSocketMessage::TaskUpdated {
+                    task_id: task_id.to_string(),
+                    status: status.to_string(),
+                });
+            } else {
+                // Fallback to HTTP notification when running standalone
+                let notifier = crate::notifier::WebNotifier::new();
+                let tid = task_id.to_string();
+                let st = status.to_string();
+                tokio::spawn(async move {
+                    notifier.notify_task_updated(&tid, &st).await;
+                });
+            }
 
             serde_json::json!({
                 "success": true,

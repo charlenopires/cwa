@@ -10,3 +10,5 @@ rusqlite = { workspace = true }
 rusqlite_migration = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
