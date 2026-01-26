@@ -21,6 +21,9 @@ pub enum SpecCommands {
     /// List all specifications
     List,
 
+    /// Get a specification by ID
+    Get(GetArgs),
+
     /// Show specification status
     Status(StatusArgs),
 
@@ -68,6 +71,12 @@ pub struct FromPromptArgs {
     /// Preview parsed specs without creating them
     #[arg(long)]
     pub dry_run: bool,
+}
+
+#[derive(Args)]
+pub struct GetArgs {
+    /// Spec ID (or ID prefix)
+    pub id: String,
 }
 
 #[derive(Args)]
@@ -229,6 +238,11 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
         SpecCommands::List => {
             let specs = cwa_core::spec::list_specs(&pool, &project.id)?;
             output::print_specs_table(&specs);
+        }
+
+        SpecCommands::Get(args) => {
+            let spec = cwa_core::spec::get_spec(&pool, &project.id, &args.id)?;
+            output::print_spec(&spec);
         }
 
         SpecCommands::Status(args) => {
