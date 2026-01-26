@@ -100,6 +100,9 @@ impl QdrantStore {
         vector: Vec<f32>,
         payload: serde_json::Value,
     ) -> Result<()> {
+        // Ensure collection exists before upserting
+        self.ensure_collection(collection).await?;
+
         let point_id = uuid_to_point_id(id);
         let qdrant_payload = json_to_payload(&payload);
 
