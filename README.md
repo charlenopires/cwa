@@ -13,7 +13,7 @@ A Rust CLI tool for development workflow orchestration integrated with Claude Co
 - **Code Generation** - Generate Claude Code agents, skills, hooks, and CLAUDE.md from your domain model
 - **Token Analysis** - Count tokens, estimate costs, and optimize context budget
 - **MCP Server** - Full Model Context Protocol integration with Claude Code
-- **Web Dashboard** - HTMX + Askama Kanban board with drag-and-drop
+- **Web Dashboard** - HTMX + Askama Kanban board with drag-and-drop and real-time WebSocket updates
 
 ## Why CWA?
 
@@ -676,11 +676,19 @@ cwa analyze market <niche>         # Analyze a market segment
 ### Servers
 
 ```bash
-cwa serve [--port <port>] [--host <host>]  # Start web server (default: 127.0.0.1:3030)
-cwa mcp stdio                              # Run MCP server over stdio
+cwa serve [--port <port>] [--host <host>]  # Start unified server (Web + MCP)
+cwa serve --log                             # Enable logging to terminal and file
+cwa serve --log --log-file <path>           # Custom log file path
+cwa mcp stdio                              # Run standalone MCP server (no web UI)
 cwa mcp planner                            # Run MCP planner server (Claude Desktop)
 cwa mcp status                             # Show MCP configuration examples
 ```
+
+**Unified Server (`cwa serve`):**
+- Runs both Web server (HTTP/WebSocket) and MCP server (stdio) concurrently
+- Shares broadcast channel for real-time updates between MCP and Web
+- When Claude Code updates tasks via MCP, the web board updates automatically
+- Use `--log` to see runtime logs in terminal (also saved to `.cwa/serve.log`)
 
 ## Claude Code Integration
 
@@ -994,6 +1002,19 @@ CWA generates a complete Claude Code configuration directory:
 
 Start with `cwa serve` and open `http://localhost:3030`.
 
+```bash
+# Basic start
+cwa serve
+
+# With logging (see runtime logs in terminal)
+cwa serve --log
+
+# Custom port
+cwa serve --port 8080
+```
+
+The unified server runs both the Web server and MCP server together, sharing a broadcast channel. When Claude Code updates tasks via MCP tools, the web board updates automatically via WebSocket.
+
 ### REST API (`/api/*`)
 
 | Method | Endpoint | Description |
@@ -1017,7 +1038,7 @@ Start with `cwa serve` and open `http://localhost:3030`.
 The web UI uses HTMX + Sortable.js for a drag-and-drop Kanban board:
 - Drag cards between columns
 - WIP limits enforced visually
-- Real-time updates via WebSocket at `/ws`
+- **Real-time updates via WebSocket** at `/ws` - when Claude Code updates tasks via MCP, the board updates automatically without page refresh
 
 ## Task Workflow
 
