@@ -27,6 +27,9 @@ pub enum TaskCommands {
     /// Show work-in-progress status
     Wip,
 
+    /// Set WIP limit for a column
+    WipSet(WipSetArgs),
+
     /// Clear all tasks for a spec
     Clear(ClearTaskArgs),
 }
@@ -84,6 +87,15 @@ pub struct MoveTaskArgs {
 
     /// Target status (backlog, todo, in_progress, review, done)
     pub status: String,
+}
+
+#[derive(Args)]
+pub struct WipSetArgs {
+    /// Column name (backlog, todo, in_progress, review, done)
+    pub column: String,
+
+    /// WIP limit (use 0 or "none" to remove limit)
+    pub limit: String,
 }
 
 pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
@@ -269,6 +281,31 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
         TaskCommands::Wip => {
             let wip = cwa_core::task::get_wip_status(&pool, &project.id)?;
             output::print_wip(&wip);
+        }
+
+        TaskCommands::WipSet(args) => {
+            let limit = match args.limit.to_lowercase().as_str() {
+                "0" | "none" | "null" | "-" => None,
+                s => Some(s.parse::<i64>().map_err(|_| {
+                    anyhow::anyhow!("Invalid limit '{}'. Use a number or 'none' to remove limit.", s)
+                })?),
+            };
+
+            cwa_core::task::set_wip_limit(&pool, &project.id, &args.column, limit)?;
+
+            match limit {
+                Some(l) => println!(
+                    "{} Set WIP limit for '{}' to {}",
+                    "✓".green().bold(),
+                    args.column.cyan(),
+                    l.to_string().yellow()
+                ),
+                None => println!(
+                    "{} Removed WIP limit for '{}'",
+                    "✓".green().bold(),
+                    args.column.cyan()
+                ),
+            }
         }
 
         TaskCommands::Clear(args) => {

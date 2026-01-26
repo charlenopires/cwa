@@ -9,11 +9,13 @@ use model::{Task, TaskStatus, Board, BoardColumn, WipStatus};
 use uuid::Uuid;
 
 /// Default Kanban columns.
+/// WIP limits: only in_progress is limited (solo dev mode).
+/// Use `cwa task wip-set` to adjust limits as needed.
 const DEFAULT_COLUMNS: &[(&str, Option<i64>)] = &[
     ("backlog", None),
-    ("todo", Some(5)),
-    ("in_progress", Some(1)),  // WIP limit of 1 for solo dev
-    ("review", Some(2)),
+    ("todo", None),           // No limit - queue of ready tasks
+    ("in_progress", Some(1)), // WIP limit of 1 for focused work
+    ("review", Some(3)),      // Allow a few items in review
     ("done", None),
 ];
 
@@ -216,5 +218,27 @@ pub fn init_kanban_columns(pool: &DbPool, project_id: &str) -> CwaResult<()> {
     for (i, (name, limit)) in DEFAULT_COLUMNS.iter().enumerate() {
         queries::set_wip_limit(pool, project_id, name, *limit, i as i32)?;
     }
+    Ok(())
+}
+
+/// Set WIP limit for a column. Use None to remove limit.
+pub fn set_wip_limit(pool: &DbPool, project_id: &str, column: &str, limit: Option<i64>) -> CwaResult<()> {
+    // Validate column name
+    let valid_columns: Vec<&str> = DEFAULT_COLUMNS.iter().map(|(name, _)| *name).collect();
+    if !valid_columns.contains(&column) {
+        return Err(CwaError::validation(format!(
+            "Invalid column '{}'. Valid columns: {}",
+            column,
+            valid_columns.join(", ")
+        )));
+    }
+
+    // Get column order
+    let order = DEFAULT_COLUMNS
+        .iter()
+        .position(|(name, _)| *name == column)
+        .unwrap() as i32;
+
+    queries::set_wip_limit(pool, project_id, column, limit, order)?;
     Ok(())
 }
