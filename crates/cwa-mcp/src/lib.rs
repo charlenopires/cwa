@@ -2,7 +2,6 @@
 //!
 //! Model Context Protocol server for Claude Code integration.
 
-pub mod notifier;
 pub mod planner;
 pub mod planner_template;
 pub mod server;

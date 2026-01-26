@@ -621,12 +621,9 @@ async fn handle_tool_call(
                 });
             } else {
                 // Fallback to HTTP notification when running standalone
-                let notifier = crate::notifier::WebNotifier::new();
-                let tid = task_id.to_string();
-                let st = status.to_string();
-                tokio::spawn(async move {
-                    notifier.notify_task_updated(&tid, &st).await;
-                });
+                // Use cwa_core notifier and await completion (no fire-and-forget)
+                let notifier = cwa_core::WebNotifier::new();
+                notifier.notify_task_updated(task_id, status).await;
             }
 
             serde_json::json!({

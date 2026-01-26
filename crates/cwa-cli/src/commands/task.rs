@@ -116,6 +116,10 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                 &args.priority,
             )?;
 
+            // Notify web server for live reload
+            let notifier = cwa_core::WebNotifier::new();
+            notifier.notify_board_refresh().await;
+
             println!(
                 "{} Created task: {} ({})",
                 "✓".green().bold(),
@@ -218,6 +222,12 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                     );
                 }
 
+                // Notify web server for live reload
+                if created > 0 {
+                    let notifier = cwa_core::WebNotifier::new();
+                    notifier.notify_board_refresh().await;
+                }
+
                 println!(
                     "\n{} Generated {} task(s){}",
                     "✓".green().bold(),
@@ -239,6 +249,12 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                         result.skipped
                     );
                 } else {
+                    // Notify web server for live reload
+                    if !result.created.is_empty() {
+                        let notifier = cwa_core::WebNotifier::new();
+                        notifier.notify_board_refresh().await;
+                    }
+
                     println!(
                         "{} Generated {} task(s) for spec '{}'{}:\n",
                         "✓".green().bold(),
@@ -260,6 +276,11 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
 
         TaskCommands::Move(args) => {
             cwa_core::task::move_task(&pool, &project.id, &args.task_id, &args.status)?;
+
+            // Notify web server for live reload
+            let notifier = cwa_core::WebNotifier::new();
+            notifier.notify_task_updated(&args.task_id, &args.status).await;
+
             println!(
                 "{} Moved task {} to {}",
                 "✓".green().bold(),
@@ -330,6 +351,13 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                 }
 
                 let count = cwa_core::task::clear_tasks_by_spec(&pool, &project.id, spec_id)?;
+
+                // Notify web server for live reload
+                if count > 0 {
+                    let notifier = cwa_core::WebNotifier::new();
+                    notifier.notify_board_refresh().await;
+                }
+
                 println!(
                     "{} Cleared {} task(s) for spec '{}'.",
                     "✓".green().bold(),
@@ -355,6 +383,13 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                 }
 
                 let count = cwa_core::task::clear_all_tasks(&pool, &project.id)?;
+
+                // Notify web server for live reload
+                if count > 0 {
+                    let notifier = cwa_core::WebNotifier::new();
+                    notifier.notify_board_refresh().await;
+                }
+
                 println!(
                     "{} Cleared {} task(s).",
                     "✓".green().bold(),
