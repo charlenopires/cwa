@@ -62,6 +62,7 @@ pub fn create_router(state: AppState) -> Router {
         .nest("/api", api_routes)
         .merge(board_routes)
         .route("/ws", get(websocket::ws_handler))
+        .route("/internal/notify", post(routes::internal::notify))
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)

@@ -600,6 +600,14 @@ async fn handle_tool_call(
                     message: e.to_string(),
                 })?;
 
+            // Notify web server (fire and forget)
+            let notifier = crate::notifier::WebNotifier::new();
+            let tid = task_id.to_string();
+            let st = status.to_string();
+            tokio::spawn(async move {
+                notifier.notify_task_updated(&tid, &st).await;
+            });
+
             serde_json::json!({
                 "success": true,
                 "message": format!("Task {} moved to {}", task_id, status)

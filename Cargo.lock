@@ -743,6 +743,7 @@ dependencies = [
  "cwa-db",
  "cwa-embedding",
  "cwa-graph",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
