@@ -27,6 +27,18 @@ pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClau
         content.push_str(&format!("{}\n\n", desc));
     }
 
+    // Workflow Guidelines
+    content.push_str("## Workflow Guidelines\n\n");
+    content.push_str("**IMPORTANT:** Always update task status on the Kanban board as you work:\n\n");
+    content.push_str("1. **Before starting work:** Move task to `in_progress`\n");
+    content.push_str("   ```\n   cwa task move <task-id> in_progress\n   ```\n");
+    content.push_str("   Or via MCP: `cwa_update_task_status(task_id, \"in_progress\")`\n\n");
+    content.push_str("2. **When ready for review:** Move task to `review`\n");
+    content.push_str("   ```\n   cwa task move <task-id> review\n   ```\n\n");
+    content.push_str("3. **When complete:** Move task to `done`\n");
+    content.push_str("   ```\n   cwa task move <task-id> done\n   ```\n\n");
+    content.push_str("**Live Board:** Run `cwa serve` and open http://127.0.0.1:3030 to see real-time updates.\n\n");
+
     // Domain Model
     let contexts = cwa_db::queries::domains::list_contexts(db, project_id)
         .map_err(|e| anyhow::anyhow!("Failed to list contexts: {}", e))?;
