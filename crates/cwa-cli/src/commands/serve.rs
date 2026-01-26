@@ -53,7 +53,11 @@ pub async fn execute(args: ServeArgs, project_dir: &Path) -> Result<()> {
         args.host,
         args.port
     );
-    println!("  {}      stdio (JSON-RPC)", "MCP".green());
+    println!();
+    println!(
+        "  {}",
+        "Live updates: MCP → HTTP → WebSocket".dimmed()
+    );
 
     if args.log {
         let log_path = args
@@ -68,18 +72,8 @@ pub async fn execute(args: ServeArgs, project_dir: &Path) -> Result<()> {
     println!("  {}", "Ctrl+C to stop".dimmed());
     println!();
 
-    // Run both servers concurrently with shared broadcast channel
-    let pool_mcp = pool.clone();
-    let tx_mcp = tx.clone();
-
-    tokio::select! {
-        result = cwa_web::run_server(pool, tx, args.port) => {
-            result?;
-        }
-        result = cwa_mcp::run_stdio_server(pool_mcp, Some(tx_mcp)) => {
-            result?;
-        }
-    }
+    // Run web server only - MCP updates come via HTTP /internal/notify
+    cwa_web::run_server(pool, tx, args.port).await?;
 
     Ok(())
 }

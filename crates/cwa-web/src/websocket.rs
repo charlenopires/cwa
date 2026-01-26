@@ -8,6 +8,7 @@ use axum::{
     response::IntoResponse,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
+use tracing::{debug, info};
 
 use crate::state::AppState;
 
@@ -24,11 +25,16 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     let (mut sender, mut receiver) = socket.split();
     let mut rx = state.tx.subscribe();
 
+    let receiver_count = state.tx.receiver_count();
+    info!(receiver_count, "WebSocket client connected");
+
     // Spawn task to forward broadcast messages to this client
     let send_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             let json = serde_json::to_string(&msg).unwrap();
+            debug!(message = %json, "Sending message to WebSocket client");
             if sender.send(Message::Text(json.into())).await.is_err() {
+                debug!("WebSocket send failed, client disconnected");
                 break;
             }
         }
@@ -39,10 +45,12 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         while let Some(Ok(msg)) = receiver.next().await {
             match msg {
                 Message::Text(text) => {
-                    tracing::debug!("Received: {}", text);
-                    // Handle client commands if needed
+                    debug!("Received from WebSocket client: {}", text);
                 }
-                Message::Close(_) => break,
+                Message::Close(_) => {
+                    debug!("WebSocket client sent close frame");
+                    break;
+                }
                 _ => {}
             }
         }
@@ -53,4 +61,6 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         _ = send_task => {},
         _ = recv_task => {},
     }
+
+    info!("WebSocket client disconnected");
 }
