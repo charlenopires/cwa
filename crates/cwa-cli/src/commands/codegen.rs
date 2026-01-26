@@ -35,6 +35,13 @@ pub enum CodegenCommands {
         dry_run: bool,
     },
 
+    /// Generate Claude Code commands
+    Commands {
+        /// Preview without writing files
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Regenerate CLAUDE.md from current state
     ClaudeMd {
         /// Preview without writing files
@@ -70,6 +77,9 @@ pub async fn execute(cmd: CodegenCommands, project_dir: &Path) -> Result<()> {
         }
         CodegenCommands::Hooks { dry_run } => {
             cmd_hooks(&pool, &project.id, project_dir, dry_run)
+        }
+        CodegenCommands::Commands { dry_run } => {
+            cmd_commands(project_dir, dry_run)
         }
         CodegenCommands::ClaudeMd { dry_run } => {
             cmd_claude_md(&pool, &project.id, project_dir, dry_run)
@@ -158,6 +168,26 @@ fn cmd_hooks(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_ru
     Ok(())
 }
 
+fn cmd_commands(project_dir: &Path, dry_run: bool) -> Result<()> {
+    let commands = cwa_codegen::generate_all_commands();
+
+    if dry_run {
+        println!("{} Would generate {} commands:", "→".dimmed(), commands.len());
+        for cmd in &commands {
+            println!("  .claude/commands/{}", cmd.filename);
+        }
+    } else {
+        let output_dir = project_dir.join(".claude/commands");
+        let written = cwa_codegen::write_commands(&commands, &output_dir)?;
+        println!("{} Generated {} commands:", "✓".green().bold(), written.len());
+        for path in &written {
+            println!("  {}", path);
+        }
+    }
+
+    Ok(())
+}
+
 fn cmd_claude_md(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
     let generated = cwa_codegen::generate_claude_md(pool, project_id)?;
 
@@ -198,6 +228,16 @@ fn cmd_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run:
             let written = cwa_codegen::write_skills(&skills, &output_dir)?;
             println!("  {} {} skills", "✓".green(), written.len());
         }
+    }
+
+    // Commands
+    let commands = cwa_codegen::generate_all_commands();
+    if dry_run {
+        println!("  {} commands: {}", commands.len(), commands.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", "));
+    } else {
+        let output_dir = project_dir.join(".claude/commands");
+        let written = cwa_codegen::write_commands(&commands, &output_dir)?;
+        println!("  {} {} commands", "✓".green(), written.len());
     }
 
     // Hooks

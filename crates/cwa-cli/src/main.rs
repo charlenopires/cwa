@@ -9,19 +9,63 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod commands;
 mod output;
 
-use commands::Cli;
+use commands::{Cli, Commands};
+
+/// Initialize tracing with optional file logging.
+fn init_tracing(log_file: Option<&std::path::Path>) {
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "cwa=info,cwa_web=debug,cwa_mcp=debug".into());
+
+    if let Some(path) = log_file {
+        // Create parent directory if needed
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        // Set up file appender
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .expect("Failed to open log file");
+
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(std::sync::Mutex::new(file))
+                    .with_ansi(false),
+            )
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "cwa=info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-
     let cli = Cli::parse();
+
+    // Check if serve command with --log
+    let log_file = match &cli.command {
+        Commands::Serve(args) if args.log => {
+            let project_dir = cli
+                .project
+                .clone()
+                .unwrap_or_else(|| std::env::current_dir().unwrap());
+            Some(
+                args.log_file
+                    .clone()
+                    .unwrap_or_else(|| project_dir.join(".cwa/serve.log")),
+            )
+        }
+        _ => None,
+    };
+
+    init_tracing(log_file.as_deref());
+
     cli.execute().await
 }
