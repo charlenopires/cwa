@@ -29,8 +29,10 @@ fn init_tracing(log_file: Option<&std::path::Path>) {
             .open(path)
             .expect("Failed to open log file");
 
+        // Log to both stdout and file when --log is used
         tracing_subscriber::registry()
             .with(env_filter)
+            .with(tracing_subscriber::fmt::layer()) // stdout
             .with(
                 tracing_subscriber::fmt::layer()
                     .with_writer(std::sync::Mutex::new(file))

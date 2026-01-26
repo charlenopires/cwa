@@ -5,8 +5,8 @@
 
 use cwa_db::{BroadcastSender, DbPool, WebSocketMessage};
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, Write};
 use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 /// JSON-RPC request structure.
 #[derive(Debug, Deserialize)]
@@ -62,11 +62,11 @@ pub async fn run_stdio(
     pool: Arc<DbPool>,
     broadcast_tx: Option<BroadcastSender>,
 ) -> anyhow::Result<()> {
-    let stdin = std::io::stdin();
-    let mut stdout = std::io::stdout();
+    let stdin = BufReader::new(tokio::io::stdin());
+    let mut stdout = tokio::io::stdout();
+    let mut lines = stdin.lines();
 
-    for line in stdin.lock().lines() {
-        let line = line?;
+    while let Some(line) = lines.next_line().await? {
         if line.trim().is_empty() {
             continue;
         }
@@ -83,8 +83,9 @@ pub async fn run_stdio(
                         message: format!("Parse error: {}", e),
                     }),
                 };
-                writeln!(stdout, "{}", serde_json::to_string(&response)?)?;
-                stdout.flush()?;
+                let output = format!("{}\n", serde_json::to_string(&response)?);
+                stdout.write_all(output.as_bytes()).await?;
+                stdout.flush().await?;
                 continue;
             }
         };
@@ -95,8 +96,9 @@ pub async fn run_stdio(
         }
 
         let response = handle_request(&pool, &broadcast_tx, request).await;
-        writeln!(stdout, "{}", serde_json::to_string(&response)?)?;
-        stdout.flush()?;
+        let output = format!("{}\n", serde_json::to_string(&response)?);
+        stdout.write_all(output.as_bytes()).await?;
+        stdout.flush().await?;
     }
 
     Ok(())
