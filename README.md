@@ -271,6 +271,7 @@ cwa spec new <title> [--description <desc>] [--priority <p>] [-c <criterion>]...
 cwa spec from-prompt [<text>] [--file <path>] [--priority <p>] [--dry-run]
 cwa spec add-criteria <spec> <criterion>...
 cwa spec list
+cwa spec get <id>                  # Get spec by ID (supports prefix)
 cwa spec status [<spec>]
 cwa spec validate <spec>
 cwa spec archive <spec-id>
