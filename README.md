@@ -9,6 +9,7 @@ A Rust CLI tool for development workflow orchestration integrated with Claude Co
 - **Kanban Board** - Task management with WIP limits and workflow enforcement (CLI + web)
 - **Knowledge Graph** - Neo4j-backed entity relationships, impact analysis, and exploration
 - **Semantic Memory** - Vector embeddings via Ollama + Qdrant for intelligent context recall
+- **Git Integration with Local LLM** - Generate commit messages using Ollama (qwen2.5-coder), saving Claude tokens
 - **Design System Extraction** - Analyze UI screenshots via Claude Vision API to generate design tokens (colors, typography, spacing, components)
 - **Code Generation** - Generate Claude Code agents, skills, hooks, and CLAUDE.md from your domain model
 - **Token Analysis** - Count tokens, estimate costs, and optimize context budget
@@ -103,6 +104,18 @@ CWA uses [Ollama](https://ollama.ai) with the `nomic-embed-text` model (768 dime
 - **nomic-embed-text** - Small (274MB), fast, and scores well on retrieval benchmarks for its size
 
 For teams needing cloud embeddings, the architecture allows swapping Ollama for OpenAI/Anthropic embedding APIs through the `cwa-embedding` crate.
+
+### Why Local LLM for Git Commits?
+
+CWA uses `qwen2.5-coder:3b` via Ollama for generating commit messages instead of Claude:
+
+- **Token savings** - Routine commits don't consume your Claude token budget
+- **Speed** - Local inference is faster than API round-trips for simple tasks
+- **Offline** - Works without internet after initial model pull
+- **qwen2.5-coder** - Specifically trained on code, understands git diffs well
+- **Flexible** - Switch models via `--model` flag or `OLLAMA_GEN_MODEL` env var
+
+The slash commands `/cwa-commit` and `/cwa-commitpush` let you use this feature directly from Claude Code, keeping Claude's context for complex tasks while offloading routine commits to the local model.
 
 ### Why Qdrant for Vector Storage?
 
@@ -635,12 +648,64 @@ Suggestions:
 Manages Neo4j, Qdrant, and Ollama containers.
 
 ```bash
-cwa infra up                       # Start all services + pull model
+cwa infra up                       # Start all services + pull models
 cwa infra down                     # Stop services (keep data)
 cwa infra down --clean             # Stop + remove volumes + remove images
-cwa infra status                   # Health check
+cwa infra status                   # Health check (shows embedding + generation models)
 cwa infra logs [service] [--follow]  # View logs
 cwa infra reset --confirm          # Destroy all data + volumes
+
+# Model management
+cwa infra models                   # List installed Ollama models
+cwa infra models pull <model>      # Pull a model (e.g., qwen2.5-coder:7b)
+cwa infra models set <model>       # Set default generation model
+```
+
+### Git Commands (Local LLM)
+
+Generate commit messages using local Ollama instead of spending Claude tokens.
+
+```bash
+cwa git msg                        # Generate commit message (preview only)
+cwa git msg --model qwen2.5-coder:7b  # Use specific model
+cwa git commit                     # Generate message and commit
+cwa git commit -a                  # Stage all changes + commit
+cwa git commit -e                  # Edit message before committing
+cwa git commitpush                 # Commit and push
+cwa git commitpush -a              # Stage all + commit + push
+```
+
+**Example:**
+```bash
+$ echo "new feature" >> feature.rs
+$ git add feature.rs
+
+$ cwa git msg
+Generating commit message using qwen2.5-coder:3b...
+
+Generated commit message:
+  feat: add new feature implementation
+
+$ cwa git commit
+Generating commit message using qwen2.5-coder:3b...
+Message: feat: add new feature implementation
+Committed successfully!
+```
+
+**Models available:**
+| Model | Size | Use Case |
+|-------|------|----------|
+| `qwen2.5-coder:3b` | 1.9GB | Default - good balance, runs on CPU |
+| `qwen2.5-coder:1.5b` | 986MB | Lighter, for limited memory |
+| `qwen2.5-coder:7b` | 4.7GB | Better quality, benefits from GPU |
+
+**Configuration:**
+```bash
+# Set default model via environment variable
+export OLLAMA_GEN_MODEL=qwen2.5-coder:7b
+
+# Or use --model flag per command
+cwa git commit --model qwen2.5-coder:7b
 ```
 
 ### Project Cleanup
@@ -998,7 +1063,7 @@ CWA generates a complete Claude Code configuration directory:
 | `workflow-kickoff` | Feature idea → full workflow | Create spec → generate tasks → generate skill → update CLAUDE.md |
 | `refactor-safe` | Safe refactoring with tests | Record decision → run tests → refactor → verify → move to review |
 
-#### Built-in Commands (8)
+#### Built-in Commands (11)
 
 | Command | Purpose |
 |---------|---------|
@@ -1010,6 +1075,9 @@ CWA generates a complete Claude Code configuration directory:
 | `/project:domain-discover` | Interactive domain discovery |
 | `/project:sync-context` | Regenerate all artifacts |
 | `/project:status` | Full project state dashboard |
+| `/cwa-commit` | Commit with Ollama-generated message (saves Claude tokens) |
+| `/cwa-commitpush` | Commit and push with Ollama-generated message |
+| `/cwa-commitmsg` | Preview generated commit message |
 
 #### Built-in Rules (5)
 
@@ -1089,7 +1157,15 @@ Tasks follow a strict workflow with WIP limits:
 |---------|-------|-------|---------|
 | Neo4j | `neo4j:5.26-community` | 7474 (HTTP), 7687 (Bolt) | Knowledge Graph |
 | Qdrant | `qdrant/qdrant:v1.13.2` | 6333 (HTTP), 6334 (gRPC) | Vector Store |
-| Ollama | `ollama/ollama:0.5.4` | 11434 | Embeddings (nomic-embed-text, 768 dims) |
+| Ollama | `ollama/ollama:0.5.4` | 11434 | Embeddings + Text Generation |
+
+**Ollama Models:**
+| Model | Purpose | Size |
+|-------|---------|------|
+| `nomic-embed-text` | Embeddings (768 dims) | 274MB |
+| `qwen2.5-coder:3b` | Commit message generation | 1.9GB |
+
+Both models are automatically pulled during `cwa infra up`.
 
 Default credentials (configurable via `.cwa/docker/.env`):
 - Neo4j: `neo4j` / `cwa_dev_2026`
@@ -1103,6 +1179,10 @@ my-project/
 ├── .cwa/
 │   ├── cwa.db                    # SQLite database
 │   ├── constitution.md           # Project values & constraints
+│   ├── scripts/                  # Git helper scripts
+│   │   ├── cwa-git-msg.sh        # Generate commit message via Ollama
+│   │   ├── cwa-git-commit.sh     # Commit with generated message
+│   │   └── cwa-git-commitpush.sh # Commit + push
 │   └── docker/                   # Docker infrastructure
 │       ├── docker-compose.yml    # Neo4j, Qdrant, Ollama services
 │       ├── .env.example          # Environment template
@@ -1119,7 +1199,7 @@ my-project/
 │   │   ├── orchestrator.md       # Workflow coordination
 │   │   ├── tester.md             # Test generation (BDD)
 │   │   └── documenter.md         # Docs & ADR maintenance
-│   ├── commands/                  # Slash commands (8 commands)
+│   ├── commands/                  # Slash commands (11 commands)
 │   │   ├── create-spec.md        # Create specification workflow
 │   │   ├── implement-task.md     # Task implementation workflow
 │   │   ├── session-summary.md    # Session summary generation
@@ -1127,7 +1207,10 @@ my-project/
 │   │   ├── review-code.md        # Review against spec criteria
 │   │   ├── domain-discover.md    # Domain discovery workflow
 │   │   ├── sync-context.md       # Regenerate all artifacts
-│   │   └── status.md             # Full project status
+│   │   ├── status.md             # Full project status
+│   │   ├── cwa-commit.md         # Git commit with Ollama
+│   │   ├── cwa-commitpush.md     # Git commit + push with Ollama
+│   │   └── cwa-commitmsg.md      # Preview commit message
 │   ├── skills/                    # Skill definitions (2 built-in)
 │   │   ├── workflow-kickoff/     # Feature idea -> full workflow
 │   │   │   └── SKILL.md
