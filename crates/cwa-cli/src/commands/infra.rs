@@ -1,8 +1,9 @@
 //! Docker infrastructure management CLI commands.
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use colored::Colorize;
+use serde_json;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -36,6 +37,26 @@ pub enum InfraCommands {
         #[arg(long)]
         confirm: bool,
     },
+
+    /// Manage Ollama models
+    Models {
+        #[command(subcommand)]
+        cmd: Option<ModelsCommands>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ModelsCommands {
+    /// Pull a model from Ollama registry
+    Pull {
+        /// Model name (e.g., qwen2.5-coder:3b)
+        model: String,
+    },
+    /// Set default generation model
+    Set {
+        /// Model name to use as default
+        model: String,
+    },
 }
 
 /// Service definitions for health checking.
@@ -57,6 +78,7 @@ pub async fn execute(cmd: InfraCommands, project_dir: &Path) -> Result<()> {
         InfraCommands::Status => cmd_status().await,
         InfraCommands::Logs { service, follow } => cmd_logs(project_dir, service, follow),
         InfraCommands::Reset { confirm } => cmd_reset(project_dir, confirm),
+        InfraCommands::Models { cmd } => cmd_models(cmd).await,
     }
 }
 
@@ -130,6 +152,18 @@ async fn cmd_up(project_dir: &Path) -> Result<()> {
         _ => println!("  {} (you can pull it manually: docker exec cwa-ollama ollama pull nomic-embed-text)", "Model pull failed".yellow()),
     }
 
+    // Pull the generation model (for commit messages, etc)
+    let gen_model = std::env::var("OLLAMA_GEN_MODEL").unwrap_or_else(|_| "qwen2.5-coder:3b".to_string());
+    println!("\n{}", format!("Pulling generation model ({})...", gen_model).dimmed());
+    let gen_pull_status = Command::new("docker")
+        .args(["exec", "cwa-ollama", "ollama", "pull", &gen_model])
+        .status();
+
+    match gen_pull_status {
+        Ok(s) if s.success() => println!("  {}", "Generation model ready".green()),
+        _ => println!("  {} (you can pull it manually: cwa infra models pull {})", "Model pull failed".yellow(), gen_model),
+    }
+
     // Run Qdrant init script
     let init_script = compose_dir.join("scripts/init-qdrant.sh");
     if init_script.exists() {
@@ -201,11 +235,19 @@ async fn cmd_status() -> Result<()> {
         println!("  {} {:<10} {}", indicator, service.name, label);
     }
 
-    // Check if ollama has the model
+    // Check if ollama has the models
     if check_health("http://localhost:11434/api/tags").await {
-        let has_model = check_ollama_model().await;
-        let model_status = if has_model { "ready".green() } else { "not pulled".yellow() };
-        println!("  {} {:<10} {}", "  ".dimmed(), "model", model_status);
+        // Embedding model
+        let has_embed = check_ollama_has_model("nomic-embed-text").await;
+        let embed_status = if has_embed { "ready".green() } else { "not pulled".yellow() };
+        println!("  {} {:<10} {} (embeddings)", "  ".dimmed(), "model", embed_status);
+
+        // Generation model
+        let gen_model = std::env::var("OLLAMA_GEN_MODEL")
+            .unwrap_or_else(|_| "qwen2.5-coder:3b".to_string());
+        let has_gen = check_ollama_has_model(&gen_model).await;
+        let gen_status = if has_gen { "ready".green() } else { "not pulled".yellow() };
+        println!("  {} {:<10} {} ({})", "  ".dimmed(), "gen", gen_status, gen_model);
     }
 
     println!("{}", "─".repeat(40));
@@ -303,8 +345,8 @@ async fn check_health(url: &str) -> bool {
     }
 }
 
-/// Check if Ollama has the nomic-embed-text model.
-async fn check_ollama_model() -> bool {
+/// Check if Ollama has a specific model.
+async fn check_ollama_has_model(model: &str) -> bool {
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build()
@@ -316,11 +358,114 @@ async fn check_ollama_model() -> bool {
     match client.get("http://localhost:11434/api/tags").send().await {
         Ok(resp) => {
             if let Ok(text) = resp.text().await {
-                text.contains("nomic-embed-text")
+                text.contains(model)
             } else {
                 false
             }
         }
         Err(_) => false,
+    }
+}
+
+/// Get list of installed Ollama models.
+async fn get_ollama_models() -> Result<Vec<String>> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .context("Failed to create HTTP client")?;
+
+    let resp = client
+        .get("http://localhost:11434/api/tags")
+        .send()
+        .await
+        .context("Failed to connect to Ollama. Is it running? Try: cwa infra up")?;
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .context("Failed to parse Ollama response")?;
+
+    let models = json["models"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| m["name"].as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(models)
+}
+
+/// Manage Ollama models.
+async fn cmd_models(cmd: Option<ModelsCommands>) -> Result<()> {
+    match cmd {
+        None => {
+            // List models
+            println!("{}", "Ollama Models".bold());
+            println!("{}", "─".repeat(40));
+
+            let models = get_ollama_models().await?;
+            if models.is_empty() {
+                println!("  {}", "No models installed".dimmed());
+                println!("\n  Suggested models for CWA:");
+                println!("    cwa infra models pull nomic-embed-text    # embeddings");
+                println!("    cwa infra models pull qwen2.5-coder:3b    # commit messages");
+            } else {
+                let gen_model = std::env::var("OLLAMA_GEN_MODEL")
+                    .unwrap_or_else(|_| "qwen2.5-coder:3b".to_string());
+
+                for model in &models {
+                    let suffix = if model == "nomic-embed-text" {
+                        " (embeddings)".dimmed().to_string()
+                    } else if model.contains(&gen_model) || model == &gen_model {
+                        " (generation - active)".green().to_string()
+                    } else if model.contains("qwen") || model.contains("coder") {
+                        " (generation)".dimmed().to_string()
+                    } else {
+                        String::new()
+                    };
+                    println!("  {} {}{}", "●".green(), model, suffix);
+                }
+            }
+
+            println!("{}", "─".repeat(40));
+            Ok(())
+        }
+        Some(ModelsCommands::Pull { model }) => {
+            println!("{}", format!("Pulling model: {}", model).bold());
+
+            let status = Command::new("docker")
+                .args(["exec", "cwa-ollama", "ollama", "pull", &model])
+                .status()
+                .context("Failed to run ollama pull. Is Docker running?")?;
+
+            if status.success() {
+                println!("{}", format!("Model {} ready", model).green());
+            } else {
+                bail!("Failed to pull model {}", model);
+            }
+
+            Ok(())
+        }
+        Some(ModelsCommands::Set { model }) => {
+            // Check if model exists
+            if !check_ollama_has_model(&model).await {
+                println!("{}", format!("Model {} not found. Pulling...", model).yellow());
+                let status = Command::new("docker")
+                    .args(["exec", "cwa-ollama", "ollama", "pull", &model])
+                    .status();
+
+                if status.is_err() || !status.unwrap().success() {
+                    bail!("Failed to pull model {}", model);
+                }
+            }
+
+            println!("{}", format!("Set {} as default generation model", model).green());
+            println!("\nTo persist this setting, add to your shell profile:");
+            println!("  export OLLAMA_GEN_MODEL={}", model);
+
+            Ok(())
+        }
     }
 }

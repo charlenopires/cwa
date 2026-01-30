@@ -10,6 +10,7 @@ pub mod codegen;
 pub mod context;
 pub mod design;
 pub mod domain;
+pub mod git;
 pub mod graph;
 pub mod infra;
 pub mod init;
@@ -94,6 +95,10 @@ pub enum Commands {
     #[command(subcommand)]
     Infra(infra::InfraCommands),
 
+    /// Git commands with Ollama-powered commit messages
+    #[command(subcommand)]
+    Git(git::GitCommands),
+
     /// Clean project (remove .cwa, .claude, CLAUDE.md, .mcp.json)
     Clean(clean::CleanArgs),
 }
@@ -119,6 +124,7 @@ impl Cli {
             Commands::Codegen(cmd) => codegen::execute(cmd, &project_dir).await,
             Commands::Tokens(cmd) => tokens::execute(cmd, &project_dir).await,
             Commands::Infra(cmd) => infra::execute(cmd, &project_dir).await,
+            Commands::Git(cmd) => git::execute(cmd).await,
             Commands::Clean(args) => clean::execute(args, &project_dir).await,
         }
     }

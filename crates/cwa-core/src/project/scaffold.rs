@@ -20,6 +20,7 @@ pub async fn create_project(target_dir: &Path, name: &str) -> CwaResult<()> {
     create_skill_templates(target_dir).await?;
     create_hooks_json(target_dir).await?;
     create_docker_infrastructure(target_dir).await?;
+    create_git_scripts(target_dir).await?;
 
     // Initialize database
     let db_path = target_dir.join(".cwa/cwa.db");
@@ -47,6 +48,7 @@ async fn create_directories(target_dir: &Path) -> CwaResult<()> {
         ".cwa/decisions",
         ".cwa/analyses",
         ".cwa/sessions",
+        ".cwa/scripts",
         ".cwa/docker",
         ".cwa/docker/scripts",
         ".claude",
@@ -678,6 +680,93 @@ Plan and execute all tasks in the backlog.
 "#;
     fs::write(commands_dir.join("run-backlog.md"), run_backlog).await?;
 
+    // Git commit command (uses Ollama instead of Claude tokens)
+    let cwa_commit = r#"# /cwa-commit
+
+Commit with auto-generated message using local Ollama (saves Claude tokens).
+
+## Status
+!git status --short
+
+## Diff Preview
+!git diff --staged 2>/dev/null | head -30 || git diff | head -30
+
+## Usage
+
+```bash
+# Generate message and commit:
+cwa git commit
+
+# Stage all changes and commit:
+cwa git commit -a
+
+# Edit message before committing:
+cwa git commit -e
+```
+
+## Notes
+
+- Uses local Ollama model (qwen2.5-coder:3b by default)
+- Requires `cwa infra up` to be running
+- Change model with: `cwa git commit --model qwen2.5-coder:7b`
+"#;
+    fs::write(commands_dir.join("cwa-commit.md"), cwa_commit).await?;
+
+    // Git commit+push command
+    let cwa_commitpush = r#"# /cwa-commitpush
+
+Commit and push with auto-generated message using local Ollama.
+
+## Status
+!git status --short
+
+## Branch
+!git branch --show-current
+
+## Usage
+
+```bash
+# Commit and push:
+cwa git commitpush
+
+# Stage all, commit and push:
+cwa git commitpush -a
+```
+
+## Notes
+
+- Combines commit and push in one command
+- Uses local Ollama for message generation
+- Ensure you're on the correct branch before running
+"#;
+    fs::write(commands_dir.join("cwa-commitpush.md"), cwa_commitpush).await?;
+
+    // Git message preview command
+    let cwa_commitmsg = r#"# /cwa-commitmsg
+
+Preview the auto-generated commit message (without committing).
+
+## Diff
+!git diff --staged 2>/dev/null | head -50 || git diff | head -50
+
+## Generated Message
+!cwa git msg 2>/dev/null || echo "Run 'cwa infra up' to start Ollama"
+
+## Usage
+
+```bash
+cwa git msg                           # Show generated message
+cwa git msg --model qwen2.5-coder:7b  # Use different model
+```
+
+## Notes
+
+- Useful for previewing what the commit message would be
+- Doesn't make any changes to your repository
+- Uses same model as cwa-commit
+"#;
+    fs::write(commands_dir.join("cwa-commitmsg.md"), cwa_commitmsg).await?;
+
     Ok(())
 }
 
@@ -1084,6 +1173,175 @@ CREATE FULLTEXT INDEX memory_search IF NOT EXISTS FOR (m:Memory) ON EACH [m.cont
         let mut perms = tokio::fs::metadata(&script_path).await?.permissions();
         perms.set_mode(0o755);
         tokio::fs::set_permissions(&script_path, perms).await?;
+    }
+
+    Ok(())
+}
+
+/// Create git helper scripts in .cwa/scripts/.
+async fn create_git_scripts(target_dir: &Path) -> CwaResult<()> {
+    let scripts_dir = target_dir.join(".cwa/scripts");
+
+    // Git message generation script
+    let cwa_git_msg = r#"#!/bin/bash
+# Generate commit message using Ollama local LLM
+# Usage: cwa-git-msg.sh [--model MODEL]
+
+set -e
+
+OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
+MODEL="${OLLAMA_GEN_MODEL:-qwen2.5-coder:3b}"
+
+# Parse args
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --model) MODEL="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+# Get diff (prefer staged, fallback to unstaged)
+DIFF=$(git diff --staged 2>/dev/null)
+if [ -z "$DIFF" ]; then
+  DIFF=$(git diff 2>/dev/null)
+fi
+
+if [ -z "$DIFF" ]; then
+  echo "Error: No changes to commit" >&2
+  exit 1
+fi
+
+# Truncate if too large (max ~4000 chars for context)
+DIFF=$(echo "$DIFF" | head -c 4000)
+
+# Build prompt
+PROMPT="Generate a concise git commit message for the following changes.
+
+Rules:
+1. Use conventional commits format: type(scope): description
+2. Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build
+3. Keep the first line under 72 characters
+4. Be specific but concise
+5. Return ONLY the commit message, nothing else
+
+Changes:
+$DIFF
+
+Commit message:"
+
+# Escape for JSON
+PROMPT_JSON=$(echo "$PROMPT" | jq -Rs .)
+
+# Call Ollama
+RESPONSE=$(curl -s "$OLLAMA_URL/api/generate" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"$MODEL\",\"prompt\":$PROMPT_JSON,\"stream\":false}" 2>/dev/null)
+
+if [ -z "$RESPONSE" ]; then
+  echo "Error: Failed to connect to Ollama. Is it running? Try: cwa infra up" >&2
+  exit 1
+fi
+
+# Extract response
+MESSAGE=$(echo "$RESPONSE" | jq -r '.response // empty' | head -1 | tr -d '\n' | sed 's/^[`"]*//;s/[`"]*$//')
+
+if [ -z "$MESSAGE" ]; then
+  echo "Error: Failed to generate message. Check if model is pulled: cwa infra models" >&2
+  exit 1
+fi
+
+echo "$MESSAGE"
+"#;
+    fs::write(scripts_dir.join("cwa-git-msg.sh"), cwa_git_msg).await?;
+
+    // Git commit script
+    let cwa_git_commit = r#"#!/bin/bash
+# Commit with auto-generated message using Ollama
+# Usage: cwa-git-commit.sh [--model MODEL] [-a]
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODEL_ARG=""
+STAGE_ALL=false
+
+# Parse args
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --model) MODEL_ARG="--model $2"; shift 2 ;;
+    -a|--all) STAGE_ALL=true; shift ;;
+    *) shift ;;
+  esac
+done
+
+# Stage all if requested
+if [ "$STAGE_ALL" = true ]; then
+  git add -A
+fi
+
+# Generate message
+MSG=$("$SCRIPT_DIR/cwa-git-msg.sh" $MODEL_ARG)
+if [ $? -ne 0 ]; then
+  exit 1
+fi
+
+echo "Commit message: $MSG"
+git commit -m "$MSG"
+echo "Committed successfully!"
+"#;
+    fs::write(scripts_dir.join("cwa-git-commit.sh"), cwa_git_commit).await?;
+
+    // Git commit+push script
+    let cwa_git_commitpush = r#"#!/bin/bash
+# Commit and push with auto-generated message
+# Usage: cwa-git-commitpush.sh [--model MODEL] [-a]
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODEL_ARG=""
+STAGE_ALL=false
+
+# Parse args
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --model) MODEL_ARG="--model $2"; shift 2 ;;
+    -a|--all) STAGE_ALL=true; shift ;;
+    *) shift ;;
+  esac
+done
+
+# Stage all if requested
+if [ "$STAGE_ALL" = true ]; then
+  git add -A
+fi
+
+# Generate message
+MSG=$("$SCRIPT_DIR/cwa-git-msg.sh" $MODEL_ARG)
+if [ $? -ne 0 ]; then
+  exit 1
+fi
+
+echo "Commit message: $MSG"
+git commit -m "$MSG"
+echo "Committed successfully!"
+
+echo "Pushing..."
+git push
+echo "Pushed successfully!"
+"#;
+    fs::write(scripts_dir.join("cwa-git-commitpush.sh"), cwa_git_commitpush).await?;
+
+    // Make scripts executable on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for script in &["cwa-git-msg.sh", "cwa-git-commit.sh", "cwa-git-commitpush.sh"] {
+            let script_path = scripts_dir.join(script);
+            let mut perms = tokio::fs::metadata(&script_path).await?.permissions();
+            perms.set_mode(0o755);
+            tokio::fs::set_permissions(&script_path, perms).await?;
+        }
     }
 
     Ok(())
