@@ -779,7 +779,47 @@ cwa serve --log --log-file <path>           # Custom log file path
 cwa mcp stdio                              # Run standalone MCP server
 cwa mcp planner                            # Run MCP planner server (Claude Desktop)
 cwa mcp status                             # Show MCP configuration examples
+cwa mcp install [target]                   # Install MCP server to target(s)
+cwa mcp install --variant planner          # Install planner variant
+cwa mcp uninstall [target]                 # Remove MCP server from target(s)
 ```
+
+**MCP Installation:**
+
+Easily install CWA as an MCP server to supported applications:
+
+```bash
+# Interactive mode (select targets)
+cwa mcp install
+
+# Install to specific target
+cwa mcp install claude-desktop
+cwa mcp install claude-code
+cwa mcp install gemini-cli
+cwa mcp install vscode
+
+# Install planner variant (includes cwa_plan_software tool)
+cwa mcp install claude-desktop --variant planner
+
+# Install to all supported targets
+cwa mcp install all
+
+# Preview without changes
+cwa mcp install --dry-run
+
+# Uninstall from a target
+cwa mcp uninstall claude-desktop
+```
+
+**Supported targets:**
+| Target | Config Location |
+|--------|-----------------|
+| `claude-desktop` | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| `claude-code` | `~/.claude.json` |
+| `gemini-cli` | `~/.gemini/settings.json` |
+| `antigravity` | `~/.gemini/antigravity/mcp_config.json` |
+| `vscode` | `~/Library/Application Support/Code/User/mcp.json` |
+| `vscode-insiders` | `~/Library/Application Support/Code - Insiders/User/mcp.json` |
 
 **Live Reload Architecture:**
 

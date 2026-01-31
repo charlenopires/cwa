@@ -6,6 +6,8 @@ CWA v0.7.0 - Claude Workflow Architect development
 
 - **cwa mcp stdio**: Full MCP server (34 tools, 11 resources)
 - **cwa mcp planner**: Full MCP server + DDD/SDD planning (35 tools, 11 resources)
+- **cwa mcp install**: Install MCP server to Claude Desktop, Claude Code, Gemini CLI, VSCode
+- **cwa mcp uninstall**: Remove MCP server from targets
 
 Both servers conform to MCP Protocol Version 2025-06-18.
 
