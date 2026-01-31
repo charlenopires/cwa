@@ -20,6 +20,7 @@ pub mod serve;
 pub mod spec;
 pub mod task;
 pub mod tokens;
+pub mod update;
 
 /// Claude Workflow Architect - Development Workflow Orchestration
 #[derive(Parser)]
@@ -101,6 +102,9 @@ pub enum Commands {
 
     /// Clean project (remove .cwa, .claude, CLAUDE.md, .mcp.json)
     Clean(clean::CleanArgs),
+
+    /// Update project information and regenerate context files
+    Update(update::UpdateArgs),
 }
 
 impl Cli {
@@ -126,6 +130,7 @@ impl Cli {
             Commands::Infra(cmd) => infra::execute(cmd, &project_dir).await,
             Commands::Git(cmd) => git::execute(cmd).await,
             Commands::Clean(args) => clean::execute(args, &project_dir).await,
+            Commands::Update(args) => update::execute(args, &project_dir).await,
         }
     }
 }

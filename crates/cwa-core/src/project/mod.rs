@@ -6,7 +6,7 @@ pub mod scaffold;
 use crate::error::{CwaError, CwaResult};
 use cwa_db::DbPool;
 use cwa_db::queries::projects as queries;
-use model::Project;
+use model::{Project, ProjectInfo};
 use uuid::Uuid;
 
 /// Create a new project in the database.
@@ -53,5 +53,32 @@ pub fn get_constitution(pool: &DbPool, project_id: &str) -> CwaResult<String> {
 /// Update the constitution path for a project.
 pub fn set_constitution_path(pool: &DbPool, project_id: &str, path: &str) -> CwaResult<()> {
     queries::update_constitution_path(pool, project_id, path)?;
+    Ok(())
+}
+
+/// Update project name and description.
+pub fn update_project(pool: &DbPool, id: &str, name: &str, description: Option<&str>) -> CwaResult<()> {
+    queries::update_project(pool, id, name, description)?;
+    Ok(())
+}
+
+/// Get project info (extended metadata).
+pub fn get_project_info(pool: &DbPool, project_id: &str) -> CwaResult<Option<ProjectInfo>> {
+    let json = queries::get_project_info(pool, project_id)?;
+    match json {
+        Some(j) => {
+            let info = ProjectInfo::from_json(&j)
+                .map_err(|e| CwaError::validation(format!("Invalid project info JSON: {}", e)))?;
+            Ok(Some(info))
+        }
+        None => Ok(None),
+    }
+}
+
+/// Set project info (extended metadata).
+pub fn set_project_info(pool: &DbPool, project_id: &str, info: &ProjectInfo) -> CwaResult<()> {
+    let json = info.to_json()
+        .map_err(|e| CwaError::validation(format!("Failed to serialize project info: {}", e)))?;
+    queries::set_project_info(pool, project_id, &json)?;
     Ok(())
 }

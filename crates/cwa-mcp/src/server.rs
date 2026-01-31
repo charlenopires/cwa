@@ -154,6 +154,14 @@ fn handle_initialize() -> Result<serde_json::Value, JsonRpcError> {
 fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
     let tools = vec![
         Tool {
+            name: "cwa_get_project_info".to_string(),
+            description: "Get project metadata including name, description, tech stack, features, and constraints. Run 'cwa update' to modify this information.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        },
+        Tool {
             name: "cwa_get_current_task".to_string(),
             description: "Get the current in-progress task".to_string(),
             input_schema: serde_json::json!({
@@ -547,6 +555,32 @@ async fn handle_tool_call(
         })?;
 
     let result = match name {
+        "cwa_get_project_info" => {
+            let info = cwa_core::project::get_project_info(pool, &project.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            match info {
+                Some(i) => serde_json::json!({
+                    "name": i.name,
+                    "description": i.description,
+                    "tech_stack": i.tech_stack,
+                    "main_features": i.main_features,
+                    "constraints": i.constraints,
+                    "updated_at": i.updated_at,
+                    "hint": "Run 'cwa update' to modify project information"
+                }),
+                None => serde_json::json!({
+                    "name": project.name,
+                    "description": project.description,
+                    "message": "No extended project info configured. Run 'cwa update' to add metadata.",
+                    "hint": "Run 'cwa update' to add tech stack, features, and constraints"
+                }),
+            }
+        }
+
         "cwa_get_current_task" => {
             let task = cwa_core::task::get_current_task(pool, &project.id)
                 .map_err(|e| JsonRpcError {
@@ -1069,6 +1103,12 @@ async fn handle_tool_call(
 fn handle_resources_list() -> Result<serde_json::Value, JsonRpcError> {
     let resources = vec![
         Resource {
+            uri: "project://info".to_string(),
+            name: "Project Information".to_string(),
+            description: "Project metadata including tech stack, features, and constraints. Run 'cwa update' to modify.".to_string(),
+            mime_type: "text/markdown".to_string(),
+        },
+        Resource {
             uri: "project://constitution".to_string(),
             name: "Project Constitution".to_string(),
             description: "Core project values and constraints".to_string(),
@@ -1128,6 +1168,23 @@ async fn handle_resource_read(
         })?;
 
     let content = match uri {
+        "project://info" => {
+            let info = cwa_core::project::get_project_info(pool, &project.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            match info {
+                Some(i) => i.to_markdown(),
+                None => format!(
+                    "# {}\n\n{}\n\n> Run `cwa update` to add project metadata (tech stack, features, constraints).",
+                    project.name,
+                    project.description.as_deref().unwrap_or("")
+                ),
+            }
+        }
+
         "project://constitution" => {
             cwa_core::project::get_constitution(pool, &project.id)
                 .map_err(|e| JsonRpcError {

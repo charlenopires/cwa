@@ -176,10 +176,12 @@ RULES:
 6. ALL data must be real (derived from the user's answers), NOT placeholders.
 7. Include ALL specs with ALL acceptance criteria. Do NOT abbreviate.
 8. The user will copy the content of this artifact directly into Claude Code terminal.
-9. IMPORTANT: Chain related commands with && so user can paste and run all at once:
-   - All "cwa domain context new" commands must end with " && \"
-   - All "cwa memory add" commands must end with " && \"
-   - The LAST command in each chain should NOT have && (just the command)
+9. CRITICAL: Generate a SINGLE EXECUTABLE SCRIPT with ALL commands chained via &&:
+   - Every command (except the last) must end with " && \"
+   - Use line continuation (\) for readability
+   - Comments (# lines) are allowed between commands for organization
+   - The ENTIRE script must be copy-pasteable and run as ONE command
+   - Group phases with comment headers but keep the && chain unbroken
 
 "#;
 
@@ -188,76 +190,36 @@ EXAMPLE OUTPUT (for a "Session Manager" Chrome extension):
 
 ```bash
 # ═══════════════════════════════════════════════════════════════════════════════
+# CWA BOOTSTRAP SCRIPT — Session Manager
+# Copy and paste this entire block to execute all phases at once
+# ═══════════════════════════════════════════════════════════════════════════════
+
 # PHASE 1: INITIALIZE PROJECT
-# ═══════════════════════════════════════════════════════════════════════════════
-cwa init "session-manager"
+cwa init "session-manager" && \
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 2: INFRASTRUCTURE (optional — enables Knowledge Graph + Semantic Memory)
-# Skip if project doesn't need graph queries or semantic search
-# ═══════════════════════════════════════════════════════════════════════════════
-cwa infra up
-cwa infra status
+# PHASE 2: INFRASTRUCTURE (enables Knowledge Graph + Semantic Memory)
+cwa infra up && \
+cwa infra status && \
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 2A: ADDITIONAL INFRASTRUCTURE (only if project needs extra databases)
-# Append services to docker-compose.yml for PostgreSQL, Redis, MongoDB, etc.
-# SKIP THIS PHASE if project uses only client-side storage (Chrome Storage, localStorage)
-# ═══════════════════════════════════════════════════════════════════════════════
-# EXAMPLE: If project needs PostgreSQL, append to .cwa/docker/docker-compose.yml:
-# cat >> .cwa/docker/docker-compose.yml << 'INFRA'
-#
-#   postgres:
-#     image: postgres:16
-#     container_name: cwa-postgres
-#     environment:
-#       POSTGRES_DB: myapp
-#       POSTGRES_USER: postgres
-#       POSTGRES_PASSWORD: postgres
-#     ports:
-#       - "5432:5432"
-#     volumes:
-#       - postgres-data:/var/lib/postgresql/data
-#     networks:
-#       - cwa-network
-#     healthcheck:
-#       test: ["CMD-SHELL", "pg_isready -U postgres"]
-#       interval: 10s
-#       timeout: 5s
-#       retries: 5
-#
-# volumes:
-#   postgres-data:
-# INFRA
-# docker compose -f .cwa/docker/docker-compose.yml up -d postgres
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 3: DOMAIN MODELING — Bounded Contexts (chained with &&)
-# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 3: DOMAIN MODELING — Bounded Contexts
 cwa domain context new "Session" --description "Gerenciamento do ciclo de vida de sessões de abas" && \
 cwa domain context new "Tab" --description "Captura e representação de abas individuais do navegador" && \
-cwa domain context new "Tag" --description "Categorização e filtragem de sessões via tags coloridas"
+cwa domain context new "Tag" --description "Categorização e filtragem de sessões via tags coloridas" && \
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 4: DOMAIN GLOSSARY — Ubiquitous Language (chained with &&)
-# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 4: DOMAIN GLOSSARY — Ubiquitous Language
 cwa memory add "Session: Snapshot nomeado de um conjunto de abas abertas em um dado momento" --type fact && \
 cwa memory add "Tab: Representação de uma aba do navegador com URL, título, favicon e estado" --type fact && \
 cwa memory add "Tag: Rótulo colorido para categorizar e filtrar sessões" --type fact && \
 cwa memory add "Restore: Ação de reabrir todas as abas de uma sessão salva" --type fact && \
-cwa memory add "Pin: Estado de fixação de uma aba na barra do navegador" --type fact
+cwa memory add "Pin: Estado de fixação de uma aba na barra do navegador" --type fact && \
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 5: ARCHITECTURAL DECISIONS (chained with &&)
-# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 5: ARCHITECTURAL DECISIONS
 cwa memory add "Usando Chrome Storage API (sync) para persistência porque permite sincronização entre dispositivos e tem 100KB de espaço. Alternativa descartada: IndexedDB (não sincroniza)" --type decision && \
 cwa memory add "Arquitetura: Manifest V3 com Service Worker porque é o padrão atual do Chrome e obrigatório para novas extensões. Background pages foram depreciadas" --type decision && \
 cwa memory add "UI: React + TailwindCSS no popup porque permite componentização e desenvolvimento rápido. Alternativa descartada: Vanilla JS (mais complexo para UI reativa)" --type decision && \
-cwa memory add "Usando UUID v4 para IDs de sessões porque garante unicidade sem coordenação. Alternativa: timestamp (risco de colisão em salvamentos rápidos)" --type decision
+cwa memory add "Usando UUID v4 para IDs de sessões porque garante unicidade sem coordenação. Alternativa: timestamp (risco de colisão em salvamentos rápidos)" --type decision && \
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 6: SPECIFICATIONS — Features with Acceptance Criteria
-# ═══════════════════════════════════════════════════════════════════════════════
 cwa spec new "Session Save" \
   --description "Salvamento de sessões capturando todas as abas abertas com seus metadados" \
   --priority critical \
@@ -267,7 +229,7 @@ cwa spec new "Session Save" \
   -c "Sistema preserva ordem das abas" \
   -c "Sessão salva inclui timestamp de criação" \
   -c "Sistema previne nomes de sessão duplicados" \
-  -c "Feedback visual confirma salvamento com sucesso"
+  -c "Feedback visual confirma salvamento com sucesso" && \
 
 cwa spec new "Session List" \
   --description "Visualização e gerenciamento da lista de sessões salvas" \
@@ -277,7 +239,7 @@ cwa spec new "Session List" \
   -c "Usuário pode renomear uma sessão existente" \
   -c "Usuário pode excluir sessão com confirmação" \
   -c "Lista ordenada por data de criação (mais recente primeiro)" \
-  -c "Busca por texto filtra sessões pelo nome"
+  -c "Busca por texto filtra sessões pelo nome" && \
 
 cwa spec new "Session Restore" \
   --description "Restauração de sessões salvas reabrindo todas as abas com propriedades originais" \
@@ -288,7 +250,7 @@ cwa spec new "Session Restore" \
   -c "Sistema preserva estado de pin das abas restauradas" \
   -c "Sistema preserva ordem original das abas" \
   -c "Feedback visual de progresso durante restauração" \
-  -c "Tratamento de URLs inválidas ou inacessíveis com aviso"
+  -c "Tratamento de URLs inválidas ou inacessíveis com aviso" && \
 
 cwa spec new "Tag Management" \
   --description "Sistema de tags coloridas para categorização de sessões" \
@@ -299,7 +261,7 @@ cwa spec new "Tag Management" \
   -c "Usuário pode excluir tag (remove de todas sessões associadas)" \
   -c "Tags são exibidas como badges coloridos nas sessões" \
   -c "Sistema previne tags com nomes duplicados" \
-  -c "Nome da tag tem limite de 30 caracteres"
+  -c "Nome da tag tem limite de 30 caracteres" && \
 
 cwa spec new "Tag Filtering" \
   --description "Filtragem de sessões por tags para localização rápida" \
@@ -309,23 +271,19 @@ cwa spec new "Tag Filtering" \
   -c "Usuário pode combinar filtro de tags com busca por texto" \
   -c "Tags ativas no filtro são destacadas visualmente" \
   -c "Botão limpar filtros remove todos os filtros ativos" \
-  -c "Contador exibe quantidade de sessões após filtro aplicado"
+  -c "Contador exibe quantidade de sessões após filtro aplicado" && \
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 7: KNOWLEDGE GRAPH SYNC
-# ═══════════════════════════════════════════════════════════════════════════════
 cwa graph sync && \
-cwa graph status
+cwa graph status && \
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 8: GENERATE CLAUDE CODE ARTIFACTS & VERIFY
-# ═══════════════════════════════════════════════════════════════════════════════
 cwa codegen all && \
 cwa spec list && \
 cwa domain context list && \
 cwa context status
 ```
 
-END OF EXAMPLE. Now generate commands for the user's prompt below. Same format. All 8 phases. Real data only. Chain commands with && as shown.
+END OF EXAMPLE. Now generate commands for the user's prompt below. Same format. All 8 phases. Real data only. ALL commands chained with && in a SINGLE executable script.
 
 "#;

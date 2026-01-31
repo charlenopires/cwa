@@ -111,3 +111,52 @@ pub fn update_constitution_path(pool: &DbPool, project_id: &str, path: &str) -> 
         Ok(())
     })
 }
+
+/// Update project name and description.
+pub fn update_project(pool: &DbPool, id: &str, name: &str, description: Option<&str>) -> DbResult<()> {
+    pool.with_conn(|conn| {
+        conn.execute(
+            "UPDATE projects SET name = ?1, description = ?2, updated_at = datetime('now') WHERE id = ?3",
+            params![name, description, id],
+        )?;
+        Ok(())
+    })
+}
+
+/// Get project info from memory table (entry_type = 'project_info').
+pub fn get_project_info(pool: &DbPool, project_id: &str) -> DbResult<Option<String>> {
+    pool.with_conn(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT content FROM memory
+             WHERE project_id = ?1 AND entry_type = 'project_info'
+             ORDER BY created_at DESC LIMIT 1",
+        )?;
+
+        let mut rows = stmt.query(params![project_id])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(row.get(0)?))
+        } else {
+            Ok(None)
+        }
+    })
+}
+
+/// Set project info in memory table (upsert pattern: delete old, insert new).
+pub fn set_project_info(pool: &DbPool, project_id: &str, content: &str) -> DbResult<()> {
+    pool.with_conn(|conn| {
+        // Delete existing project_info entries
+        conn.execute(
+            "DELETE FROM memory WHERE project_id = ?1 AND entry_type = 'project_info'",
+            params![project_id],
+        )?;
+
+        // Insert new
+        let id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO memory (id, project_id, entry_type, content, importance)
+             VALUES (?1, ?2, 'project_info', ?3, 'critical')",
+            params![id, project_id, content],
+        )?;
+        Ok(())
+    })
+}

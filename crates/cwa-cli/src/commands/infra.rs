@@ -78,28 +78,29 @@ pub async fn execute(cmd: InfraCommands, project_dir: &Path) -> Result<()> {
         InfraCommands::Status => cmd_status().await,
         InfraCommands::Logs { service, follow } => cmd_logs(project_dir, service, follow),
         InfraCommands::Reset { confirm } => cmd_reset(project_dir, confirm),
-        InfraCommands::Models { cmd } => cmd_models(cmd).await,
+        InfraCommands::Models { cmd } => cmd_models(project_dir, cmd).await,
     }
 }
 
 /// Find the docker-compose.yml file.
+/// Priority: .cwa/docker > docker/ (project-local)
 fn find_compose_file(project_dir: &Path) -> Result<PathBuf> {
-    // Check project-local docker directory
-    let local = project_dir.join("docker/docker-compose.yml");
-    if local.exists() {
-        return Ok(local);
-    }
-
-    // Check .cwa directory (for initialized projects)
+    // Check .cwa directory first (for initialized CWA projects)
     let cwa_dir = project_dir.join(".cwa/docker/docker-compose.yml");
     if cwa_dir.exists() {
         return Ok(cwa_dir);
     }
 
+    // Fallback to project-local docker directory
+    let local = project_dir.join("docker/docker-compose.yml");
+    if local.exists() {
+        return Ok(local);
+    }
+
     bail!(
-        "docker-compose.yml not found. Searched:\n  - {}\n  - {}\n\nRun 'cwa init --with-graph' or ensure docker/ directory exists.",
-        local.display(),
-        cwa_dir.display()
+        "docker-compose.yml not found. Searched:\n  - {}\n  - {}\n\nRun 'cwa init --with-graph' or ensure .cwa/docker/ directory exists.",
+        cwa_dir.display(),
+        local.display()
     )
 }
 
@@ -141,22 +142,28 @@ async fn cmd_up(project_dir: &Path) -> Result<()> {
         }
     }
 
-    // Pull the embedding model
+    // Pull the embedding model using docker compose exec (works with any container naming)
     println!("\n{}", "Pulling embedding model (nomic-embed-text)...".dimmed());
     let pull_status = Command::new("docker")
-        .args(["exec", "cwa-ollama", "ollama", "pull", "nomic-embed-text"])
+        .args([
+            "compose", "-f", compose_file.to_str().unwrap(),
+            "exec", "-T", "ollama", "ollama", "pull", "nomic-embed-text"
+        ])
         .status();
 
     match pull_status {
         Ok(s) if s.success() => println!("  {}", "Model ready".green()),
-        _ => println!("  {} (you can pull it manually: docker exec cwa-ollama ollama pull nomic-embed-text)", "Model pull failed".yellow()),
+        _ => println!("  {} (you can pull it manually: cwa infra models pull nomic-embed-text)", "Model pull failed".yellow()),
     }
 
     // Pull the generation model (for commit messages, etc)
     let gen_model = std::env::var("OLLAMA_GEN_MODEL").unwrap_or_else(|_| "qwen2.5-coder:3b".to_string());
     println!("\n{}", format!("Pulling generation model ({})...", gen_model).dimmed());
     let gen_pull_status = Command::new("docker")
-        .args(["exec", "cwa-ollama", "ollama", "pull", &gen_model])
+        .args([
+            "compose", "-f", compose_file.to_str().unwrap(),
+            "exec", "-T", "ollama", "ollama", "pull", &gen_model
+        ])
         .status();
 
     match gen_pull_status {
@@ -398,7 +405,9 @@ async fn get_ollama_models() -> Result<Vec<String>> {
 }
 
 /// Manage Ollama models.
-async fn cmd_models(cmd: Option<ModelsCommands>) -> Result<()> {
+async fn cmd_models(project_dir: &Path, cmd: Option<ModelsCommands>) -> Result<()> {
+    let compose_file = find_compose_file(project_dir)?;
+
     match cmd {
         None => {
             // List models
@@ -436,7 +445,10 @@ async fn cmd_models(cmd: Option<ModelsCommands>) -> Result<()> {
             println!("{}", format!("Pulling model: {}", model).bold());
 
             let status = Command::new("docker")
-                .args(["exec", "cwa-ollama", "ollama", "pull", &model])
+                .args([
+                    "compose", "-f", compose_file.to_str().unwrap(),
+                    "exec", "-T", "ollama", "ollama", "pull", &model
+                ])
                 .status()
                 .context("Failed to run ollama pull. Is Docker running?")?;
 
@@ -453,7 +465,10 @@ async fn cmd_models(cmd: Option<ModelsCommands>) -> Result<()> {
             if !check_ollama_has_model(&model).await {
                 println!("{}", format!("Model {} not found. Pulling...", model).yellow());
                 let status = Command::new("docker")
-                    .args(["exec", "cwa-ollama", "ollama", "pull", &model])
+                    .args([
+                        "compose", "-f", compose_file.to_str().unwrap(),
+                        "exec", "-T", "ollama", "ollama", "pull", &model
+                    ])
                     .status();
 
                 if status.is_err() || !status.unwrap().success() {

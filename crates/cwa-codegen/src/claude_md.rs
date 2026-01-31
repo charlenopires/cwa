@@ -14,6 +14,18 @@ pub struct GeneratedClaudeMd {
     pub content: String,
 }
 
+/// Project info structure for deserialization.
+#[derive(Debug, Clone, serde::Deserialize)]
+struct ProjectInfo {
+    name: String,
+    description: String,
+    tech_stack: Vec<String>,
+    main_features: Vec<String>,
+    constraints: Vec<String>,
+    #[allow(dead_code)]
+    updated_at: String,
+}
+
 /// Generate CLAUDE.md content from the current project state.
 pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClaudeMd> {
     let project = cwa_db::queries::projects::get_project(db, project_id)
@@ -21,10 +33,47 @@ pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClau
 
     let mut content = String::new();
 
-    // Header
-    content.push_str(&format!("# {}\n\n", project.name));
-    if let Some(ref desc) = project.description {
-        content.push_str(&format!("{}\n\n", desc));
+    // Try to get project info (extended metadata)
+    let project_info = cwa_db::queries::projects::get_project_info(db, project_id)
+        .ok()
+        .flatten()
+        .and_then(|json| serde_json::from_str::<ProjectInfo>(&json).ok());
+
+    // Header with project info
+    if let Some(ref info) = project_info {
+        content.push_str(&format!("# {}\n\n", info.name));
+        if !info.description.is_empty() {
+            content.push_str(&format!("{}\n\n", info.description));
+        }
+
+        // Tech Stack
+        if !info.tech_stack.is_empty() {
+            content.push_str(&format!("**Tech Stack:** {}\n\n", info.tech_stack.join(", ")));
+        }
+
+        // Key Features
+        if !info.main_features.is_empty() {
+            content.push_str("## Key Features\n\n");
+            for feature in &info.main_features {
+                content.push_str(&format!("- {}\n", feature));
+            }
+            content.push('\n');
+        }
+
+        // Constraints
+        if !info.constraints.is_empty() {
+            content.push_str("## Constraints\n\n");
+            for constraint in &info.constraints {
+                content.push_str(&format!("- {}\n", constraint));
+            }
+            content.push('\n');
+        }
+    } else {
+        // Fallback to basic project info
+        content.push_str(&format!("# {}\n\n", project.name));
+        if let Some(ref desc) = project.description {
+            content.push_str(&format!("{}\n\n", desc));
+        }
     }
 
     // Workflow Guidelines
