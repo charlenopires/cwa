@@ -521,6 +521,186 @@ fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
                 "required": ["query"]
             }),
         },
+        // New listing tools
+        Tool {
+            name: "cwa_list_specs".to_string(),
+            description: "List all specifications for the project".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by status: draft, active, completed, archived (optional)"
+                    }
+                }
+            }),
+        },
+        Tool {
+            name: "cwa_list_tasks".to_string(),
+            description: "List all tasks for the project".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Filter by status: backlog, todo, in_progress, review, done (optional)"
+                    },
+                    "spec_id": {
+                        "type": "string",
+                        "description": "Filter by spec ID (optional)"
+                    }
+                }
+            }),
+        },
+        Tool {
+            name: "cwa_update_spec_status".to_string(),
+            description: "Update a specification's status".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "spec_id": {
+                        "type": "string",
+                        "description": "Spec ID or title"
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "New status: draft, active, completed, archived"
+                    }
+                },
+                "required": ["spec_id", "status"]
+            }),
+        },
+        Tool {
+            name: "cwa_get_glossary".to_string(),
+            description: "Get the domain glossary with term definitions".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        },
+        Tool {
+            name: "cwa_add_glossary_term".to_string(),
+            description: "Add a term to the domain glossary".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "term": {
+                        "type": "string",
+                        "description": "The term to define"
+                    },
+                    "definition": {
+                        "type": "string",
+                        "description": "The definition of the term"
+                    },
+                    "context_id": {
+                        "type": "string",
+                        "description": "Optional bounded context ID to associate with"
+                    }
+                },
+                "required": ["term", "definition"]
+            }),
+        },
+        Tool {
+            name: "cwa_get_wip_status".to_string(),
+            description: "Get WIP (Work In Progress) limits status for all Kanban columns".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        },
+        Tool {
+            name: "cwa_set_wip_limit".to_string(),
+            description: "Set WIP limit for a Kanban column".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "column": {
+                        "type": "string",
+                        "description": "Column name: backlog, todo, in_progress, review, done"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "WIP limit (null to remove limit)"
+                    }
+                },
+                "required": ["column"]
+            }),
+        },
+        Tool {
+            name: "cwa_validate_spec".to_string(),
+            description: "Validate a specification for completeness".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "spec_id": {
+                        "type": "string",
+                        "description": "Spec ID or title"
+                    }
+                },
+                "required": ["spec_id"]
+            }),
+        },
+        Tool {
+            name: "cwa_add_acceptance_criteria".to_string(),
+            description: "Add acceptance criteria to an existing specification".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "spec_id": {
+                        "type": "string",
+                        "description": "Spec ID or title"
+                    },
+                    "criteria": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Acceptance criteria to add"
+                    }
+                },
+                "required": ["spec_id", "criteria"]
+            }),
+        },
+        Tool {
+            name: "cwa_get_context_map".to_string(),
+            description: "Get the DDD context map showing relationships between bounded contexts".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        },
+        Tool {
+            name: "cwa_create_domain_object".to_string(),
+            description: "Create a domain object (entity, value object, aggregate, service, event) within a bounded context".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "context_id": {
+                        "type": "string",
+                        "description": "Bounded context ID"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Object name"
+                    },
+                    "object_type": {
+                        "type": "string",
+                        "description": "Type: entity, value_object, aggregate, service, event"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Object description (optional)"
+                    }
+                },
+                "required": ["context_id", "name", "object_type"]
+            }),
+        },
+        Tool {
+            name: "cwa_list_decisions".to_string(),
+            description: "List all architectural decisions (ADRs) for the project".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        },
     ];
 
     Ok(serde_json::json!({ "tools": tools }))
@@ -1007,6 +1187,269 @@ async fn handle_tool_call(
             })
         }
 
+        // Listing tools
+        "cwa_list_specs" => {
+            let specs = cwa_core::spec::list_specs(pool, &project.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            let status_filter = args.get("status").and_then(|v| v.as_str());
+            let filtered: Vec<_> = specs
+                .into_iter()
+                .filter(|s| status_filter.map_or(true, |f| s.status.as_str() == f))
+                .collect();
+
+            serde_json::json!({
+                "count": filtered.len(),
+                "specs": filtered.iter().map(|s| serde_json::json!({
+                    "id": s.id,
+                    "title": s.title,
+                    "status": s.status.as_str(),
+                    "priority": s.priority.as_str(),
+                    "criteria_count": s.acceptance_criteria.len()
+                })).collect::<Vec<_>>()
+            })
+        }
+
+        "cwa_list_tasks" => {
+            let status_filter = args.get("status").and_then(|v| v.as_str());
+            let spec_filter = args.get("spec_id").and_then(|v| v.as_str());
+
+            let tasks = if let Some(spec_id) = spec_filter {
+                let spec = cwa_core::spec::get_spec(pool, &project.id, spec_id)
+                    .map_err(|e| JsonRpcError {
+                        code: -32603,
+                        message: e.to_string(),
+                    })?;
+                cwa_core::task::list_tasks_by_spec(pool, &spec.id)
+                    .map_err(|e| JsonRpcError {
+                        code: -32603,
+                        message: e.to_string(),
+                    })?
+            } else {
+                cwa_core::task::list_tasks(pool, &project.id)
+                    .map_err(|e| JsonRpcError {
+                        code: -32603,
+                        message: e.to_string(),
+                    })?
+            };
+
+            let filtered: Vec<_> = tasks
+                .into_iter()
+                .filter(|t| status_filter.map_or(true, |f| t.status.as_str() == f))
+                .collect();
+
+            serde_json::json!({
+                "count": filtered.len(),
+                "tasks": filtered.iter().map(|t| serde_json::json!({
+                    "id": t.id,
+                    "title": t.title,
+                    "status": t.status.as_str(),
+                    "priority": t.priority.as_str(),
+                    "spec_id": t.spec_id
+                })).collect::<Vec<_>>()
+            })
+        }
+
+        "cwa_update_spec_status" => {
+            let spec_id = args["spec_id"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing spec_id".to_string(),
+            })?;
+            let status = args["status"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing status".to_string(),
+            })?;
+
+            let spec = cwa_core::spec::get_spec(pool, &project.id, spec_id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            cwa_core::spec::update_status(pool, &spec.id, status)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({
+                "success": true,
+                "message": format!("Spec '{}' status updated to {}", spec.title, status)
+            })
+        }
+
+        "cwa_get_glossary" => {
+            let terms = cwa_core::domain::list_glossary(pool, &project.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({
+                "count": terms.len(),
+                "terms": terms
+            })
+        }
+
+        "cwa_add_glossary_term" => {
+            let term = args["term"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing term".to_string(),
+            })?;
+            let definition = args["definition"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing definition".to_string(),
+            })?;
+            let context_id = args.get("context_id").and_then(|v| v.as_str());
+
+            cwa_core::domain::add_glossary_term(pool, &project.id, term, definition, context_id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({
+                "success": true,
+                "message": format!("Glossary term '{}' added", term)
+            })
+        }
+
+        "cwa_get_wip_status" => {
+            let wip_status = cwa_core::task::get_wip_status(pool, &project.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::to_value(&wip_status).unwrap()
+        }
+
+        "cwa_set_wip_limit" => {
+            let column = args["column"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing column".to_string(),
+            })?;
+            let limit = args.get("limit").and_then(|v| v.as_i64());
+
+            cwa_core::task::set_wip_limit(pool, &project.id, column, limit)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            let msg = match limit {
+                Some(l) => format!("WIP limit for '{}' set to {}", column, l),
+                None => format!("WIP limit for '{}' removed", column),
+            };
+
+            serde_json::json!({
+                "success": true,
+                "message": msg
+            })
+        }
+
+        "cwa_validate_spec" => {
+            let spec_id = args["spec_id"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing spec_id".to_string(),
+            })?;
+
+            let spec = cwa_core::spec::get_spec(pool, &project.id, spec_id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            let result = cwa_core::spec::validate_spec(pool, &spec.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::to_value(&result).unwrap()
+        }
+
+        "cwa_add_acceptance_criteria" => {
+            let spec_id = args["spec_id"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing spec_id".to_string(),
+            })?;
+            let criteria: Vec<String> = args["criteria"].as_array()
+                .ok_or_else(|| JsonRpcError {
+                    code: -32602,
+                    message: "Missing criteria array".to_string(),
+                })?
+                .iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect();
+
+            let spec = cwa_core::spec::add_acceptance_criteria(pool, &project.id, spec_id, &criteria)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({
+                "success": true,
+                "spec_id": spec.id,
+                "title": spec.title,
+                "total_criteria": spec.acceptance_criteria.len()
+            })
+        }
+
+        "cwa_get_context_map" => {
+            let context_map = cwa_core::domain::get_context_map(pool, &project.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::to_value(&context_map).unwrap()
+        }
+
+        "cwa_create_domain_object" => {
+            let context_id = args["context_id"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing context_id".to_string(),
+            })?;
+            let name = args["name"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing name".to_string(),
+            })?;
+            let object_type = args["object_type"].as_str().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: "Missing object_type".to_string(),
+            })?;
+            let description = args.get("description").and_then(|v| v.as_str());
+
+            cwa_core::domain::create_domain_object(pool, context_id, name, object_type, description)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({
+                "success": true,
+                "message": format!("Domain object '{}' ({}) created", name, object_type)
+            })
+        }
+
+        "cwa_list_decisions" => {
+            let decisions = cwa_core::decision::list_decisions(pool, &project.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::json!({
+                "count": decisions.len(),
+                "decisions": decisions
+            })
+        }
+
         // Creation tools
         "cwa_create_context" => {
             let name = args["name"].as_str().ok_or_else(|| JsonRpcError {
@@ -1138,6 +1581,37 @@ fn handle_resources_list() -> Result<serde_json::Value, JsonRpcError> {
             description: "ADR log".to_string(),
             mime_type: "application/json".to_string(),
         },
+        // New resources
+        Resource {
+            uri: "project://specs".to_string(),
+            name: "All Specifications".to_string(),
+            description: "List of all project specifications with status and criteria count".to_string(),
+            mime_type: "application/json".to_string(),
+        },
+        Resource {
+            uri: "project://tasks".to_string(),
+            name: "All Tasks".to_string(),
+            description: "List of all tasks with current status".to_string(),
+            mime_type: "application/json".to_string(),
+        },
+        Resource {
+            uri: "project://glossary".to_string(),
+            name: "Domain Glossary".to_string(),
+            description: "Ubiquitous language terms and definitions".to_string(),
+            mime_type: "application/json".to_string(),
+        },
+        Resource {
+            uri: "project://wip-status".to_string(),
+            name: "WIP Status".to_string(),
+            description: "Work-in-progress limits and current counts per column".to_string(),
+            mime_type: "application/json".to_string(),
+        },
+        Resource {
+            uri: "project://context-map".to_string(),
+            name: "Context Map".to_string(),
+            description: "DDD context map showing relationships between bounded contexts".to_string(),
+            mime_type: "application/json".to_string(),
+        },
     ];
 
     Ok(serde_json::json!({ "resources": resources }))
@@ -1234,6 +1708,81 @@ async fn handle_resource_read(
                 })?;
 
             serde_json::to_string_pretty(&decisions).unwrap()
+        }
+
+        "project://specs" => {
+            let specs = cwa_core::spec::list_specs(pool, &project.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            let summary: Vec<_> = specs.iter().map(|s| serde_json::json!({
+                "id": s.id,
+                "title": s.title,
+                "status": s.status.as_str(),
+                "priority": s.priority.as_str(),
+                "criteria_count": s.acceptance_criteria.len()
+            })).collect();
+
+            serde_json::to_string_pretty(&serde_json::json!({
+                "count": specs.len(),
+                "specs": summary
+            })).unwrap()
+        }
+
+        "project://tasks" => {
+            let tasks = cwa_core::task::list_tasks(pool, &project.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            let summary: Vec<_> = tasks.iter().map(|t| serde_json::json!({
+                "id": t.id,
+                "title": t.title,
+                "status": t.status.as_str(),
+                "priority": t.priority.as_str(),
+                "spec_id": t.spec_id
+            })).collect();
+
+            serde_json::to_string_pretty(&serde_json::json!({
+                "count": tasks.len(),
+                "tasks": summary
+            })).unwrap()
+        }
+
+        "project://glossary" => {
+            let terms = cwa_core::domain::list_glossary(pool, &project.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::to_string_pretty(&serde_json::json!({
+                "count": terms.len(),
+                "terms": terms
+            })).unwrap()
+        }
+
+        "project://wip-status" => {
+            let wip_status = cwa_core::task::get_wip_status(pool, &project.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::to_string_pretty(&wip_status).unwrap()
+        }
+
+        "project://context-map" => {
+            let context_map = cwa_core::domain::get_context_map(pool, &project.id)
+                .map_err(|e| JsonRpcError {
+                    code: -32603,
+                    message: e.to_string(),
+                })?;
+
+            serde_json::to_string_pretty(&context_map).unwrap()
         }
 
         _ => {

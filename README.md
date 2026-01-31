@@ -178,7 +178,7 @@ This creates:
 
 ### 2. Open in Claude Code
 
-Open the project directory in Claude Code. The `.mcp.json` file is detected automatically, connecting the CWA MCP server with 18 tools and 5 resources.
+Open the project directory in Claude Code. The `.mcp.json` file is detected automatically, connecting the CWA MCP server with 34 tools and 11 resources.
 
 ### 3. Describe Your Project
 
@@ -1025,43 +1025,92 @@ cwa codegen all
 
 Take these commands to Claude Code for execution, or let Claude Code call the MCP tools (`cwa_create_context`, `cwa_create_spec`, `cwa_generate_tasks`) directly.
 
-### MCP Tools Reference
+### MCP Tools Reference (34 Tools)
 
-| Tool | Phase | Description |
-|------|-------|-------------|
-| `cwa_get_project_info` | All phases | Get project metadata (tech stack, features, constraints) |
-| `cwa_create_context` | Planning, Design | Create a new bounded context |
-| `cwa_create_spec` | Planning | Create a spec with acceptance criteria |
-| `cwa_create_task` | Planning | Create a new task |
-| `cwa_get_current_task` | Implementation | Get the current in-progress task |
-| `cwa_get_spec` | Planning, Implementation, Review | Get specification with acceptance criteria |
-| `cwa_get_context_summary` | Planning | Compact project state overview |
-| `cwa_get_domain_model` | Design | Bounded contexts, entities, invariants |
-| `cwa_update_task_status` | Implementation, Review | Move task through workflow (enforces WIP) |
-| `cwa_add_decision` | All phases | Record architectural decision with rationale |
-| `cwa_get_next_steps` | Planning | Suggested next actions based on state |
-| `cwa_generate_tasks` | Planning | Auto-create tasks from spec criteria |
-| `cwa_search_memory` | All phases | Text search project memory |
-| `cwa_graph_query` | Design | Execute Cypher on knowledge graph |
-| `cwa_graph_impact` | Design, Planning | Analyze impact of entity changes |
-| `cwa_graph_sync` | Design | Trigger SQLite to Neo4j sync |
-| `cwa_memory_semantic_search` | All phases | Vector similarity search |
-| `cwa_memory_add` | Memory | Store memory with embedding |
-| `cwa_observe` | Implementation, Memory | Record structured observation |
-| `cwa_memory_timeline` | Memory | Compact timeline (~50 tokens/entry) |
-| `cwa_memory_get` | Memory | Full observation details (~500 tokens/entry) |
-| `cwa_memory_search_all` | All phases | Search across all memory types |
+#### Project & Context (4 tools)
 
-### MCP Resources
+| Tool | Description |
+|------|-------------|
+| `cwa_get_project_info` | Get project metadata (tech stack, features, constraints) |
+| `cwa_get_context_summary` | Compact project state overview |
+| `cwa_get_domain_model` | Bounded contexts, entities, invariants |
+| `cwa_get_context_map` | Get DDD context map showing relationships |
+
+#### Specifications (6 tools)
+
+| Tool | Description |
+|------|-------------|
+| `cwa_get_spec` | Get specification by ID or title |
+| `cwa_list_specs` | List all specs (filterable by status) |
+| `cwa_create_spec` | Create spec with acceptance criteria |
+| `cwa_update_spec_status` | Update spec status (draft, active, completed, archived) |
+| `cwa_add_acceptance_criteria` | Add criteria to existing spec |
+| `cwa_validate_spec` | Validate spec for completeness |
+
+#### Tasks & Kanban (7 tools)
+
+| Tool | Description |
+|------|-------------|
+| `cwa_get_current_task` | Get current in-progress task |
+| `cwa_list_tasks` | List all tasks (filterable by status/spec) |
+| `cwa_create_task` | Create a new task |
+| `cwa_update_task_status` | Move task through workflow (enforces WIP) |
+| `cwa_generate_tasks` | Auto-create tasks from spec criteria |
+| `cwa_get_wip_status` | Get WIP limits status for all columns |
+| `cwa_set_wip_limit` | Set WIP limit for a Kanban column |
+
+#### Memory & Observations (8 tools)
+
+| Tool | Description |
+|------|-------------|
+| `cwa_search_memory` | Text-based memory search |
+| `cwa_memory_semantic_search` | Vector similarity search (Qdrant) |
+| `cwa_memory_search_all` | Unified search across all memory types |
+| `cwa_memory_add` | Store memory with embedding |
+| `cwa_observe` | Record structured observation |
+| `cwa_memory_timeline` | Compact timeline (~50 tokens/entry) |
+| `cwa_memory_get` | Full observation details (~500 tokens/entry) |
+| `cwa_get_next_steps` | Suggested next actions based on state |
+
+#### Domain Modeling - DDD (4 tools)
+
+| Tool | Description |
+|------|-------------|
+| `cwa_create_context` | Create a new bounded context |
+| `cwa_create_domain_object` | Create domain object (entity, value object, aggregate, service, event) |
+| `cwa_get_glossary` | Get domain glossary terms |
+| `cwa_add_glossary_term` | Add term to domain glossary |
+
+#### Decisions - ADRs (2 tools)
+
+| Tool | Description |
+|------|-------------|
+| `cwa_add_decision` | Register architectural decision with rationale |
+| `cwa_list_decisions` | List all architectural decisions |
+
+#### Knowledge Graph - Neo4j (3 tools)
+
+| Tool | Description |
+|------|-------------|
+| `cwa_graph_query` | Execute Cypher query on knowledge graph |
+| `cwa_graph_impact` | Analyze impact of entity changes |
+| `cwa_graph_sync` | Trigger SQLite to Neo4j sync |
+
+### MCP Resources (11 Resources)
 
 | URI | Description |
 |-----|-------------|
 | `project://info` | Project metadata (name, tech stack, features, constraints) |
 | `project://constitution` | Project values and constraints |
 | `project://current-spec` | Currently active specification |
-| `project://domain-model` | DDD model with contexts |
+| `project://domain-model` | DDD model with bounded contexts |
 | `project://kanban-board` | Current board state |
 | `project://decisions` | Architectural decision log |
+| `project://specs` | All specifications with status and criteria count |
+| `project://tasks` | All tasks with current status |
+| `project://glossary` | Domain glossary terms and definitions |
+| `project://wip-status` | WIP limits and current counts per column |
+| `project://context-map` | Context relationships (upstream/downstream) |
 
 ### Generated Artifacts (`.claude/` Directory)
 
