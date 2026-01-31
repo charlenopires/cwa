@@ -258,6 +258,9 @@ All CLI commands are documented in the [CLI Reference](#cli-reference) section b
 
 ```bash
 cwa init <name> [--from-prompt <prompt>]   # Initialize new project
+cwa update                                  # Update project info interactively
+cwa update --regenerate-only                # Only regenerate context files
+cwa update --no-regen                       # Only save info, skip file regeneration
 cwa context status                          # View current project focus
 cwa context summary                         # View context summary
 cwa clean [--confirm] [--infra]             # Clean project (start fresh)
@@ -275,6 +278,34 @@ Project: my-saas
   Specs: 3 (1 active, 2 draft)
   Tasks: 5 (1 in_progress, 2 todo, 2 backlog)
   Contexts: 2
+
+$ cwa update
+→ Updating project: my-saas
+
+Project name [my-saas]: My SaaS Platform
+Description []: A subscription billing platform for startups
+Tech stack (comma-separated): Rust, Axum, SQLite, HTMX
+
+Main features (enter each on a line, empty line to finish):
+Feature #1: User management and teams
+Feature #2: Subscription plans (free, pro, enterprise)
+Feature #3: Stripe payment integration
+Feature #4:
+
+Constraints/Guidelines (enter each on a line, empty line to finish):
+Constraint #1: Must support multi-tenancy
+Constraint #2: GDPR compliant data handling
+Constraint #3:
+
+✓ Project info saved
+→ Regenerating context files...
+  ✓ CLAUDE.md
+  ✓ 3 agents
+  ✓ 2 skills
+  ✓ 4 commands
+  ✓ hooks.json
+
+✓ Project updated successfully!
 ```
 
 ### Specifications (SDD)
@@ -998,6 +1029,7 @@ Take these commands to Claude Code for execution, or let Claude Code call the MC
 
 | Tool | Phase | Description |
 |------|-------|-------------|
+| `cwa_get_project_info` | All phases | Get project metadata (tech stack, features, constraints) |
 | `cwa_create_context` | Planning, Design | Create a new bounded context |
 | `cwa_create_spec` | Planning | Create a spec with acceptance criteria |
 | `cwa_create_task` | Planning | Create a new task |
@@ -1024,6 +1056,7 @@ Take these commands to Claude Code for execution, or let Claude Code call the MC
 
 | URI | Description |
 |-----|-------------|
+| `project://info` | Project metadata (name, tech stack, features, constraints) |
 | `project://constitution` | Project values and constraints |
 | `project://current-spec` | Currently active specification |
 | `project://domain-model` | DDD model with contexts |
