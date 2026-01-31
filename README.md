@@ -997,35 +997,62 @@ For project planning before implementation, configure the planner in Claude Desk
 }
 ```
 
-The `cwa_plan_software` tool takes your idea and generates a structured planning document with:
+The planner server exposes **35 tools** (all 34 CWA tools + `cwa_plan_software`) and **11 resources**, making it a full-featured MCP server with planning capabilities.
+
+#### DDD/SDD Methodology
+
+The `cwa_plan_software` tool uses Domain-Driven Design (DDD) and Specification-Driven Development (SDD) principles:
+
+**Domain-Driven Design (DDD):**
+- Strategic Design: identify subdomains (Core, Supporting, Generic)
+- Bounded Contexts: clear boundaries where domain models apply
+- Ubiquitous Language: shared vocabulary between team and code
+- Context Mapping: relationships between contexts
+
+**Specification-Driven Development (SDD):**
+- Specifications are the SOURCE OF TRUTH, not code
+- Requirements and acceptance criteria BEFORE implementation
+- Each spec is a contract that drives design, testing, and documentation
+
+The tool generates a structured planning document with:
 1. Clarifying questions for Claude to ask
-2. Bounded contexts (DDD)
-3. Specifications with acceptance criteria
-4. Domain model with entities and invariants
-5. Architectural decisions
-6. Task breakdown
-7. **Ordered CLI bootstrap commands** ready to execute
+2. Bounded contexts (DDD Strategic Design)
+3. Ubiquitous Language (Domain Glossary)
+4. Architectural Decisions (ADRs)
+5. Specifications with acceptance criteria (SDD)
+6. **Single executable CLI bootstrap script** ready to copy-paste
 
 **Example flow:**
 
 > You: "I want to build a recipe app with user accounts, recipe sharing, and ratings"
 
-Claude Desktop asks clarifying questions about tech stack, scale, and auth method, then generates a planning document with concrete commands:
+Claude Desktop asks clarifying questions about tech stack, scale, and auth method, then generates a single executable script:
 
 ```bash
-cwa init "recipe-app"
-cwa domain context new "Recipes" --description "Recipe management and search"
-cwa domain context new "Users" --description "User accounts and profiles"
-cwa spec new "User Registration" -c "User can sign up with email" -c "Email verification required"
-cwa spec new "Recipe CRUD" -c "User can create recipe" -c "User can search by ingredient"
-cwa task generate "User Registration"
-cwa task generate "Recipe CRUD"
+# ═══════════════════════════════════════════════════════════════════════════════
+# CWA BOOTSTRAP SCRIPT — Recipe App
+# Domain-Driven Design + Specification-Driven Development
+# ═══════════════════════════════════════════════════════════════════════════════
+
+cwa init "recipe-app" && \
+cwa infra up && \
+cwa domain context new "Recipes" --description "Core: Recipe management and search" && \
+cwa domain context new "Users" --description "Supporting: User accounts and profiles" && \
+cwa memory add "Recipe: A named collection of ingredients and preparation steps" --type fact && \
+cwa memory add "ADR-001: Using SQLite for persistence. Rationale: simplicity, no server needed" --type decision && \
+cwa spec new "User Registration" --priority high \
+  -c "User can sign up with email" \
+  -c "Email verification required" && \
+cwa spec new "Recipe CRUD" --priority critical \
+  -c "User can create recipe" \
+  -c "User can search by ingredient" && \
+cwa graph sync && \
 cwa codegen all
 ```
 
-Take these commands to Claude Code for execution, or let Claude Code call the MCP tools (`cwa_create_context`, `cwa_create_spec`, `cwa_generate_tasks`) directly.
+Take this script to Claude Code for execution, or use the MCP tools directly.
 
-### MCP Tools Reference (34 Tools)
+### MCP Tools Reference (34 Tools + 1 Planner Tool)
 
 #### Project & Context (4 tools)
 

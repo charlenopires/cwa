@@ -29,10 +29,10 @@ struct JsonRpcResponse {
     error: Option<JsonRpcError>,
 }
 
-#[derive(Debug, Serialize)]
-struct JsonRpcError {
-    code: i32,
-    message: String,
+#[derive(Debug, Serialize, Clone)]
+pub struct JsonRpcError {
+    pub code: i32,
+    pub message: String,
 }
 
 /// Tool definition.
@@ -111,10 +111,10 @@ async fn handle_request(
 ) -> JsonRpcResponse {
     let result = match request.method.as_str() {
         "initialize" => handle_initialize(),
-        "tools/list" => handle_tools_list(),
-        "tools/call" => handle_tool_call(pool, broadcast_tx, request.params).await,
-        "resources/list" => handle_resources_list(),
-        "resources/read" => handle_resource_read(pool, request.params).await,
+        "tools/list" => get_tools_list(),
+        "tools/call" => call_tool(pool, broadcast_tx, request.params).await,
+        "resources/list" => get_resources_list(),
+        "resources/read" => read_resource(pool, request.params).await,
         _ => Err(JsonRpcError {
             code: -32601,
             message: format!("Method not found: {}", request.method),
@@ -139,19 +139,24 @@ async fn handle_request(
 
 fn handle_initialize() -> Result<serde_json::Value, JsonRpcError> {
     Ok(serde_json::json!({
-        "protocolVersion": "2024-11-05",
+        "protocolVersion": "2025-06-18",
         "serverInfo": {
             "name": "cwa",
             "version": env!("CARGO_PKG_VERSION")
         },
         "capabilities": {
-            "tools": {},
-            "resources": {}
+            "tools": {
+                "listChanged": true
+            },
+            "resources": {
+                "listChanged": true
+            }
         }
     }))
 }
 
-fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
+/// Get the list of all available tools (for reuse by planner).
+pub fn get_tools_list() -> Result<serde_json::Value, JsonRpcError> {
     let tools = vec![
         Tool {
             name: "cwa_get_project_info".to_string(),
@@ -706,7 +711,8 @@ fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
     Ok(serde_json::json!({ "tools": tools }))
 }
 
-async fn handle_tool_call(
+/// Call a tool by name (for reuse by planner).
+pub async fn call_tool(
     pool: &DbPool,
     broadcast_tx: &Option<BroadcastSender>,
     params: Option<serde_json::Value>,
@@ -1543,7 +1549,8 @@ async fn handle_tool_call(
     }))
 }
 
-fn handle_resources_list() -> Result<serde_json::Value, JsonRpcError> {
+/// Get the list of all available resources (for reuse by planner).
+pub fn get_resources_list() -> Result<serde_json::Value, JsonRpcError> {
     let resources = vec![
         Resource {
             uri: "project://info".to_string(),
@@ -1617,7 +1624,8 @@ fn handle_resources_list() -> Result<serde_json::Value, JsonRpcError> {
     Ok(serde_json::json!({ "resources": resources }))
 }
 
-async fn handle_resource_read(
+/// Read a resource by URI (for reuse by planner).
+pub async fn read_resource(
     pool: &DbPool,
     params: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, JsonRpcError> {

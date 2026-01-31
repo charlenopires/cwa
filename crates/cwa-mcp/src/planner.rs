@@ -1,14 +1,17 @@
 //! MCP Planner Server for Claude Desktop.
 //!
-//! A specialized MCP server that exposes a single tool (`cwa_plan_software`)
-//! for generating structured planning documents from user prompts.
+//! A full-featured MCP server that exposes ALL CWA tools plus the `cwa_plan_software`
+//! tool for generating DDD/SDD-based planning documents.
 //! Designed to be configured in Claude Desktop's MCP settings.
 
+use cwa_db::DbPool;
 use serde::{Deserialize, Serialize};
-use std::io::{self, BufRead, Write};
 use std::path::Path;
+use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::planner_template;
+use crate::server::{self, JsonRpcError};
 
 // ============================================================
 // JSON-RPC TYPES
@@ -33,36 +36,23 @@ struct JsonRpcResponse {
     error: Option<JsonRpcError>,
 }
 
-#[derive(Debug, Serialize)]
-struct JsonRpcError {
-    code: i32,
-    message: String,
-}
-
-#[derive(Debug, Serialize)]
-struct Tool {
-    name: String,
-    description: String,
-    #[serde(rename = "inputSchema")]
-    input_schema: serde_json::Value,
-}
-
 // ============================================================
 // SERVER LOOP
 // ============================================================
 
 /// Run the MCP planner server over stdio.
+/// This is a full-featured server with all CWA tools plus the planner tool.
 pub async fn run_planner_stdio() -> anyhow::Result<()> {
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
+    // Find project directory and initialize database
+    let project_dir = find_project_dir()?;
+    let db_path = project_dir.join(".cwa/cwa.db");
+    let pool = Arc::new(cwa_db::init_pool(&db_path)?);
 
-    for line in stdin.lock().lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(e) if e.kind() == io::ErrorKind::BrokenPipe => break,
-            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
-            Err(e) => return Err(e.into()),
-        };
+    let stdin = BufReader::new(tokio::io::stdin());
+    let mut stdout = tokio::io::stdout();
+    let mut lines = stdin.lines();
+
+    while let Some(line) = lines.next_line().await? {
         if line.trim().is_empty() {
             continue;
         }
@@ -79,7 +69,7 @@ pub async fn run_planner_stdio() -> anyhow::Result<()> {
                         message: format!("Parse error: {}", e),
                     }),
                 };
-                if write_response(&mut stdout, &response).is_err() {
+                if write_response(&mut stdout, &response).await.is_err() {
                     break;
                 }
                 continue;
@@ -91,8 +81,8 @@ pub async fn run_planner_stdio() -> anyhow::Result<()> {
             continue;
         }
 
-        let response = handle_request(request).await;
-        if write_response(&mut stdout, &response).is_err() {
+        let response = handle_request(&pool, request).await;
+        if write_response(&mut stdout, &response).await.is_err() {
             break;
         }
     }
@@ -100,26 +90,37 @@ pub async fn run_planner_stdio() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Write a JSON-RPC response to stdout, returning Err on broken pipe.
-fn write_response(stdout: &mut io::Stdout, response: &JsonRpcResponse) -> io::Result<()> {
-    let json = serde_json::to_string(response).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-    match writeln!(stdout, "{}", json) {
-        Ok(()) => stdout.flush(),
-        Err(e) if e.kind() == io::ErrorKind::BrokenPipe => Err(e),
-        Err(e) => Err(e),
+/// Find the project directory by looking for .cwa/cwa.db
+fn find_project_dir() -> anyhow::Result<std::path::PathBuf> {
+    let mut dir = std::env::current_dir()?;
+    loop {
+        if dir.join(".cwa/cwa.db").exists() {
+            return Ok(dir);
+        }
+        if !dir.pop() {
+            anyhow::bail!("No CWA project found. Run 'cwa init' first or navigate to a CWA project directory.");
+        }
     }
+}
+
+/// Write a JSON-RPC response to stdout.
+async fn write_response(stdout: &mut tokio::io::Stdout, response: &JsonRpcResponse) -> std::io::Result<()> {
+    let json = serde_json::to_string(response).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    stdout.write_all(format!("{}\n", json).as_bytes()).await?;
+    stdout.flush().await
 }
 
 // ============================================================
 // REQUEST ROUTING
 // ============================================================
 
-async fn handle_request(request: JsonRpcRequest) -> JsonRpcResponse {
+async fn handle_request(pool: &DbPool, request: JsonRpcRequest) -> JsonRpcResponse {
     let result = match request.method.as_str() {
         "initialize" => handle_initialize(),
         "tools/list" => handle_tools_list(),
-        "tools/call" => handle_tool_call(request.params).await,
-        "resources/list" => Ok(serde_json::json!({ "resources": [] })),
+        "tools/call" => handle_tool_call(pool, request.params).await,
+        "resources/list" => server::get_resources_list(),
+        "resources/read" => server::read_resource(pool, request.params).await,
         _ => Err(JsonRpcError {
             code: -32601,
             message: format!("Method not found: {}", request.method),
@@ -148,43 +149,56 @@ async fn handle_request(request: JsonRpcRequest) -> JsonRpcResponse {
 
 fn handle_initialize() -> Result<serde_json::Value, JsonRpcError> {
     Ok(serde_json::json!({
-        "protocolVersion": "2024-11-05",
+        "protocolVersion": "2025-06-18",
         "serverInfo": {
             "name": "cwa-planner",
             "version": env!("CARGO_PKG_VERSION")
         },
         "capabilities": {
-            "tools": {}
+            "tools": {
+                "listChanged": true
+            },
+            "resources": {
+                "listChanged": true
+            }
         }
     }))
 }
 
 fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
-    let tools = vec![
-        Tool {
-            name: "cwa_plan_software".to_string(),
-            description: "Generate a structured software planning document. Returns markdown with DDD bounded contexts, specifications with acceptance criteria, domain model, task breakdown, and CWA CLI bootstrap commands. Instructs the AI to ask clarifying questions before generating any code.".to_string(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "prompt": {
-                        "type": "string",
-                        "description": "Description of the desired software, feature, or system to plan"
-                    },
-                    "project_path": {
-                        "type": "string",
-                        "description": "Optional absolute path to an existing CWA project directory (contains .cwa/cwa.db). When provided, reads current project state and generates a continuation plan that integrates with existing specs, contexts, and tasks."
-                    }
-                },
-                "required": ["prompt"]
-            }),
-        },
-    ];
+    // Get all tools from the main server
+    let mut tools = server::get_tools_list()?;
 
-    Ok(serde_json::json!({ "tools": tools }))
+    // Add the planner tool
+    let planner_tool = serde_json::json!({
+        "name": "cwa_plan_software",
+        "description": "Generate a software plan using Domain-Driven Design (DDD) and Specification-Driven Development (SDD) methodologies. Returns executable CWA CLI commands covering: Strategic Design (bounded contexts, subdomains), Ubiquitous Language (domain glossary), Architectural Decisions (ADRs), and Specifications (source of truth with acceptance criteria). The AI asks clarifying questions before generating the plan.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "Description of the desired software, feature, or system to plan"
+                },
+                "project_path": {
+                    "type": "string",
+                    "description": "Optional absolute path to an existing CWA project directory (contains .cwa/cwa.db). When provided, reads current project state and generates a continuation plan that integrates with existing specs, contexts, and tasks."
+                }
+            },
+            "required": ["prompt"]
+        }
+    });
+
+    // Insert planner tool at the beginning
+    if let Some(tools_array) = tools["tools"].as_array_mut() {
+        tools_array.insert(0, planner_tool);
+    }
+
+    Ok(tools)
 }
 
 async fn handle_tool_call(
+    pool: &DbPool,
     params: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError {
@@ -199,19 +213,19 @@ async fn handle_tool_call(
             message: "Missing tool name".to_string(),
         })?;
 
-    let args = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
-
-    match name {
-        "cwa_plan_software" => plan_software(&args).await,
-        _ => Err(JsonRpcError {
-            code: -32601,
-            message: format!("Unknown tool: {}", name),
-        }),
+    // Handle planner tool specially
+    if name == "cwa_plan_software" {
+        let args = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
+        return plan_software(&args).await;
     }
+
+    // Delegate all other tools to the main server
+    // No broadcast channel for planner (uses HTTP fallback)
+    server::call_tool(pool, &None, Some(params)).await
 }
 
 // ============================================================
-// TOOL IMPLEMENTATION
+// PLANNER TOOL IMPLEMENTATION
 // ============================================================
 
 async fn plan_software(

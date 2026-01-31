@@ -50,12 +50,21 @@ pub async fn execute(cmd: McpCommands, project_dir: &Path) -> Result<()> {
                 "CWA Planner".cyan().bold(),
                 "server running (stdio)".bold()
             );
-            eprintln!("  {} 1 tool: cwa_plan_software", "▸".dimmed());
-            eprintln!("  {} Generates 8-phase bootstrap plans for new projects", "▸".dimmed());
+            eprintln!("  {} {} tools | {} resources", "▸".dimmed(), MCP_TOOLS_COUNT + 1, MCP_RESOURCES_COUNT);
+            eprintln!("  {} Full MCP server + DDD/SDD planning tool", "▸".dimmed());
+            eprintln!();
+            eprintln!("{}", "  Planner Tool".bold().underline());
+            eprintln!("    {} {}", "cwa_plan_software".cyan(), "Generate DDD/SDD-based software plan".dimmed());
+            eprintln!();
+            eprintln!("{}", "  DDD/SDD Methodology".bold().underline());
+            eprintln!("    {} Strategic Design (bounded contexts, subdomains)", "•".dimmed());
+            eprintln!("    {} Ubiquitous Language (domain glossary)", "•".dimmed());
+            eprintln!("    {} Architectural Decisions (ADRs)", "•".dimmed());
+            eprintln!("    {} Specifications (SDD source of truth)", "•".dimmed());
+            eprintln!();
             eprintln!("  {} Ctrl+C to stop", "▸".dimmed());
             eprintln!();
-            eprintln!("  {} Use 'cwa mcp status' to see all {} tools from the main server", "💡".yellow(), MCP_TOOLS_COUNT);
-            eprintln!();
+            eprintln!("  {} Use 'cwa mcp status' for detailed tool/resource list", "💡".yellow());
 
             cwa_mcp::run_planner_stdio().await?;
         }
