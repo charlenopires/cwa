@@ -1,8 +1,29 @@
 //! CLI command definitions and handlers.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+
+/// Find a CWA project by searching up the directory tree.
+///
+/// Starts from the current directory and walks up until it finds a directory
+/// containing `.cwa/cwa.db`. This is used by MCP commands which may be
+/// executed by Claude Desktop from "/" or other system directories.
+fn find_cwa_project() -> Result<PathBuf> {
+    let mut dir = std::env::current_dir().context("Failed to get current directory")?;
+
+    loop {
+        if dir.join(".cwa/cwa.db").exists() {
+            return Ok(dir);
+        }
+        if !dir.pop() {
+            anyhow::bail!(
+                "No CWA project found. Run 'cwa init' in your project directory first, \
+                or use '--project <path>' to specify the project location."
+            );
+        }
+    }
+}
 
 pub mod analyze;
 pub mod clean;
@@ -109,9 +130,16 @@ pub enum Commands {
 
 impl Cli {
     pub async fn execute(self) -> Result<()> {
-        let project_dir = self
-            .project
-            .unwrap_or_else(|| std::env::current_dir().unwrap());
+        // For MCP commands, we need to find an existing CWA project
+        // since Claude Desktop may run from "/" or another system directory
+        let project_dir = if let Some(p) = self.project {
+            p
+        } else if matches!(self.command, Commands::Mcp(_)) {
+            // For MCP commands, search up the directory tree for a CWA project
+            find_cwa_project()?
+        } else {
+            std::env::current_dir()?
+        };
 
         match self.command {
             Commands::Init(args) => init::execute(args).await,

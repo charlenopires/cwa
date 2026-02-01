@@ -1,0 +1,337 @@
+#!/usr/bin/env bash
+#
+# cwa-git - Git commands with local Ollama for commit message generation
+#
+# Usage:
+#   cwa-git msg                    # Generate commit message only
+#   cwa-git commit [-a] [-e]       # Commit with auto-generated message
+#   cwa-git commitpush [-a]        # Commit and push
+#
+# Environment variables:
+#   OLLAMA_URL        - Ollama API URL (default: http://localhost:11434)
+#   OLLAMA_GEN_MODEL  - Model to use (default: qwen2.5-coder:3b)
+
+set -e
+
+# Configuration
+OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
+OLLAMA_MODEL="${OLLAMA_GEN_MODEL:-qwen2.5-coder:3b}"
+MAX_DIFF_CHARS=4000
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+DIM='\033[0;90m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# Check dependencies
+check_deps() {
+    if ! command -v jq &> /dev/null; then
+        echo -e "${RED}Error: jq is required. Install with: brew install jq${NC}"
+        exit 1
+    fi
+    if ! command -v curl &> /dev/null; then
+        echo -e "${RED}Error: curl is required${NC}"
+        exit 1
+    fi
+}
+
+# Check if Ollama is available
+check_ollama() {
+    if ! curl -s "${OLLAMA_URL}/api/tags" > /dev/null 2>&1; then
+        echo -e "${RED}Error: Cannot connect to Ollama at ${OLLAMA_URL}${NC}"
+        echo -e "${DIM}Start Ollama with: ollama serve${NC}"
+        echo -e "${DIM}Or via Docker: docker run -d -p 11434:11434 ollama/ollama${NC}"
+        exit 1
+    fi
+}
+
+# Check if we're in a git repo
+check_git_repo() {
+    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+        echo -e "${RED}Error: Not a git repository${NC}"
+        exit 1
+    fi
+}
+
+# Get git diff
+get_diff() {
+    local staged_only=$1
+    local diff=""
+
+    if [ "$staged_only" = true ]; then
+        diff=$(git diff --staged 2>/dev/null)
+    fi
+
+    if [ -z "$diff" ]; then
+        diff=$(git diff 2>/dev/null)
+    fi
+
+    echo "$diff"
+}
+
+# Truncate diff if too long
+truncate_diff() {
+    local diff="$1"
+    local max_chars=$2
+    local diff_len=${#diff}
+
+    if [ $diff_len -gt $max_chars ]; then
+        echo "${diff:0:$max_chars}
+
+... (truncated, $((diff_len - max_chars)) more characters)"
+    else
+        echo "$diff"
+    fi
+}
+
+# Generate commit message using Ollama
+generate_message() {
+    local diff="$1"
+
+    local prompt="Generate a concise git commit message for the following changes.
+
+Rules:
+1. Use conventional commits format: type(scope): description
+2. Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build
+3. Keep the first line under 72 characters
+4. Be specific but concise
+5. Return ONLY the commit message, nothing else
+
+Changes:
+$diff
+
+Commit message:"
+
+    echo -e "${DIM}Generating commit message using ${OLLAMA_MODEL}...${NC}" >&2
+
+    local response
+    response=$(curl -s -X POST "${OLLAMA_URL}/api/generate" \
+        -H "Content-Type: application/json" \
+        -d "$(jq -n --arg model "$OLLAMA_MODEL" --arg prompt "$prompt" '{
+            model: $model,
+            prompt: $prompt,
+            stream: false
+        }')" 2>&1)
+
+    # Check for errors
+    if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
+        local error
+        error=$(echo "$response" | jq -r '.error')
+        if echo "$error" | grep -q "not found"; then
+            echo -e "${RED}Model '${OLLAMA_MODEL}' not found.${NC}" >&2
+            echo -e "${DIM}Pull it with: ollama pull ${OLLAMA_MODEL}${NC}" >&2
+        else
+            echo -e "${RED}Ollama error: ${error}${NC}" >&2
+        fi
+        exit 1
+    fi
+
+    # Extract and clean message
+    local message
+    message=$(echo "$response" | jq -r '.response // empty' | \
+        sed 's/^```//; s/```$//' | \
+        head -n 1 | \
+        sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+    if [ -z "$message" ]; then
+        echo -e "${RED}Failed to generate commit message${NC}" >&2
+        exit 1
+    fi
+
+    echo "$message"
+}
+
+# Command: msg - Generate message only
+cmd_msg() {
+    local diff
+    diff=$(get_diff true)
+
+    if [ -z "$diff" ]; then
+        echo -e "${YELLOW}No changes to commit. Stage changes with 'git add' first.${NC}"
+        exit 1
+    fi
+
+    diff=$(truncate_diff "$diff" $MAX_DIFF_CHARS)
+    local message
+    message=$(generate_message "$diff")
+
+    echo -e "\n${BOLD}Generated commit message:${NC}"
+    echo -e "  ${GREEN}${message}${NC}"
+}
+
+# Command: commit - Commit with auto-generated message
+cmd_commit() {
+    local stage_all=false
+    local edit=false
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -a|--all) stage_all=true; shift ;;
+            -e|--edit) edit=true; shift ;;
+            *) shift ;;
+        esac
+    done
+
+    if [ "$stage_all" = true ]; then
+        echo -e "${DIM}Staging all changes...${NC}"
+        git add -A
+    fi
+
+    if [ -z "$(git status --porcelain)" ]; then
+        echo -e "${YELLOW}No changes to commit.${NC}"
+        exit 0
+    fi
+
+    local diff
+    diff=$(get_diff true)
+
+    if [ -z "$diff" ]; then
+        echo -e "${YELLOW}No staged changes. Use -a to stage all or 'git add' files first.${NC}"
+        exit 1
+    fi
+
+    diff=$(truncate_diff "$diff" $MAX_DIFF_CHARS)
+    local message
+    message=$(generate_message "$diff")
+
+    echo -e "${BOLD}Message:${NC} ${GREEN}${message}${NC}"
+
+    if [ "$edit" = true ]; then
+        echo -e "${DIM}Opening editor for message editing...${NC}"
+        git commit -e -m "$message"
+    else
+        git commit -m "$message"
+    fi
+
+    echo -e "${GREEN}Committed successfully!${NC}"
+}
+
+# Command: commitpush - Commit and push
+cmd_commitpush() {
+    local stage_all=false
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -a|--all) stage_all=true; shift ;;
+            *) shift ;;
+        esac
+    done
+
+    if [ "$stage_all" = true ]; then
+        echo -e "${DIM}Staging all changes...${NC}"
+        git add -A
+    fi
+
+    if [ -z "$(git status --porcelain)" ]; then
+        echo -e "${YELLOW}No changes to commit.${NC}"
+        exit 0
+    fi
+
+    local diff
+    diff=$(get_diff true)
+
+    if [ -z "$diff" ]; then
+        echo -e "${YELLOW}No staged changes. Use -a to stage all or 'git add' files first.${NC}"
+        exit 1
+    fi
+
+    diff=$(truncate_diff "$diff" $MAX_DIFF_CHARS)
+    local message
+    message=$(generate_message "$diff")
+
+    echo -e "${BOLD}Message:${NC} ${GREEN}${message}${NC}"
+
+    git commit -m "$message"
+    echo -e "${GREEN}Committed successfully!${NC}"
+
+    echo -e "${DIM}Pushing to remote...${NC}"
+    git push
+    echo -e "${GREEN}${BOLD}Pushed successfully!${NC}"
+}
+
+# Show help
+show_help() {
+    echo "Usage: cwa-git <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  msg                    Generate commit message only (doesn't commit)"
+    echo "  commit [-a] [-e]       Commit with auto-generated message"
+    echo "  commitpush [-a]        Commit and push with auto-generated message"
+    echo ""
+    echo "Options:"
+    echo "  -a, --all              Stage all changes before commit"
+    echo "  -e, --edit             Edit message before committing (commit only)"
+    echo ""
+    echo "Environment:"
+    echo "  OLLAMA_URL             Ollama API URL (default: http://localhost:11434)"
+    echo "  OLLAMA_GEN_MODEL       Model to use (default: qwen2.5-coder:3b)"
+    echo ""
+    echo "Examples:"
+    echo "  cwa-git msg            # Show what message would be generated"
+    echo "  cwa-git commit -a      # Stage all and commit"
+    echo "  cwa-git commitpush -a  # Stage all, commit, and push"
+}
+
+# Main
+main() {
+    check_deps
+    check_git_repo
+
+    # Detect if called via symlink (cwa-msg, cwa-commit, cwa-commitpush)
+    local script_name
+    script_name=$(basename "$0")
+
+    case $script_name in
+        cwa-msg)
+            check_ollama
+            cmd_msg "$@"
+            return
+            ;;
+        cwa-commit)
+            check_ollama
+            cmd_commit "$@"
+            return
+            ;;
+        cwa-commitpush)
+            check_ollama
+            cmd_commitpush "$@"
+            return
+            ;;
+    esac
+
+    # Normal invocation: cwa-git <command>
+    if [ $# -eq 0 ]; then
+        show_help
+        exit 0
+    fi
+
+    local cmd=$1
+    shift
+
+    check_ollama
+
+    case $cmd in
+        msg)
+            cmd_msg "$@"
+            ;;
+        commit)
+            cmd_commit "$@"
+            ;;
+        commitpush)
+            cmd_commitpush "$@"
+            ;;
+        -h|--help|help)
+            show_help
+            ;;
+        *)
+            echo -e "${RED}Unknown command: ${cmd}${NC}"
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
