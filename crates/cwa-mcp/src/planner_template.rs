@@ -11,9 +11,7 @@ pub struct ExistingState {
     pub project_name: String,
     pub contexts: Vec<ContextInfo>,
     pub specs: Vec<SpecInfo>,
-    pub tasks: Vec<TaskInfo>,
     pub decisions: Vec<DecisionInfo>,
-    pub glossary: Vec<GlossaryInfo>,
 }
 
 pub struct ContextInfo {
@@ -30,22 +28,10 @@ pub struct SpecInfo {
     pub acceptance_criteria: Vec<String>,
 }
 
-pub struct TaskInfo {
-    pub title: String,
-    pub status: String,
-    pub priority: String,
-    pub spec_id: Option<String>,
-}
-
 pub struct DecisionInfo {
     pub title: String,
     pub status: String,
     pub decision: String,
-}
-
-pub struct GlossaryInfo {
-    pub term: String,
-    pub definition: String,
 }
 
 /// Read existing project state from a CWA database.
@@ -82,17 +68,6 @@ pub fn read_existing_state(project_path: &Path) -> anyhow::Result<ExistingState>
         })
         .collect();
 
-    // Read tasks
-    let tasks = cwa_core::task::list_tasks(&pool, &project.id)?
-        .into_iter()
-        .map(|t| TaskInfo {
-            title: t.title,
-            status: t.status.as_str().to_string(),
-            priority: t.priority,
-            spec_id: t.spec_id.map(|id| id[..8].to_string()),
-        })
-        .collect();
-
     // Read decisions
     let decisions = cwa_core::decision::list_decisions(&pool, &project.id)?
         .into_iter()
@@ -103,22 +78,11 @@ pub fn read_existing_state(project_path: &Path) -> anyhow::Result<ExistingState>
         })
         .collect();
 
-    // Read glossary
-    let glossary = cwa_core::domain::list_glossary(&pool, &project.id)?
-        .into_iter()
-        .map(|g| GlossaryInfo {
-            term: g.term,
-            definition: g.definition,
-        })
-        .collect();
-
     Ok(ExistingState {
         project_name: project.name,
         contexts,
         specs,
-        tasks,
         decisions,
-        glossary,
     })
 }
 
@@ -152,10 +116,10 @@ pub fn render_planning_document(prompt: &str, existing: Option<ExistingState>) -
             }
         }
 
-        if !state.glossary.is_empty() {
-            doc.push_str("# Existing glossary:\n");
-            for g in &state.glossary {
-                doc.push_str(&format!("# - {}: {}\n", g.term, g.definition));
+        if !state.decisions.is_empty() {
+            doc.push_str("# Existing decisions:\n");
+            for d in &state.decisions {
+                doc.push_str(&format!("# - {} [{}]\n", d.title, d.status));
             }
         }
 
@@ -172,7 +136,6 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
 ### Domain-Driven Design (DDD) Strategic Patterns
 - **Subdomains**: Identify Core, Supporting, and Generic subdomains
 - **Bounded Contexts**: Define clear boundaries where domain models apply
-- **Ubiquitous Language**: Establish shared vocabulary between team and code
 - **Context Mapping**: Define relationships between bounded contexts
 
 ### Specification-Driven Development (SDD)
@@ -187,11 +150,6 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
 - `cwa update` — Update project info and regenerate context files
 - `cwa context status` — Show project context status
 
-### Infrastructure
-- `cwa infra up` — Start Docker infrastructure (Neo4j, Qdrant)
-- `cwa infra down` — Stop infrastructure
-- `cwa infra status` — Check infrastructure status
-
 ### Specifications (SDD)
 - `cwa spec new "<title>" --description "<desc>" --priority <critical|high|medium|low> -c "<criterion>"` — Create spec with criteria
 - `cwa spec add-criteria "<spec-id>" -c "<criterion>"` — Add criteria to existing spec
@@ -202,24 +160,9 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
 ### Domain Modeling (DDD)
 - `cwa domain context new "<name>" --description "<desc>"` — Create bounded context
 - `cwa domain context list` — List all contexts
-- `cwa domain glossary` — Show domain glossary
 
 ### Memory & Observations
 - `cwa memory add "<content>" --type <fact|decision|preference|pattern>` — Store memory with embedding
-- `cwa memory observe "<title>" --type <bugfix|feature|discovery|decision|insight> --narrative "<text>"` — Record observation
-- `cwa memory search "<query>"` — Semantic search
-- `cwa memory timeline` — View recent observations
-
-### Tasks (Kanban)
-- `cwa task new "<title>" --priority <critical|high|medium|low>` — Create task
-- `cwa task generate "<spec-id>"` — Generate tasks from spec criteria
-- `cwa task move "<task-id>" <backlog|todo|in_progress|review|done>` — Move task
-- `cwa task board` — Show Kanban board
-- `cwa task wip` — Show WIP status
-
-### Knowledge Graph
-- `cwa graph sync` — Sync entities to Neo4j
-- `cwa graph status` — Check graph status
 
 ### Code Generation
 - `cwa codegen all` — Generate all artifacts
@@ -239,19 +182,19 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
 
 4. Structure your plan using DDD/SDD phases (adapt as needed):
    - INITIALIZATION: Project setup
-   - INFRASTRUCTURE: Enable Knowledge Graph + Semantic Memory
    - STRATEGIC DESIGN: Identify subdomains and bounded contexts
-   - UBIQUITOUS LANGUAGE: Define domain glossary terms
-   - ARCHITECTURAL DECISIONS: Record ADRs for key choices
+   - ARCHITECTURAL DECISIONS: Record ADRs as memories (--type decision)
+   - TECH STACK: Record technology choices as decisions
    - SPECIFICATIONS: Feature specs with acceptance criteria (SDD)
-   - KNOWLEDGE GRAPH: Sync domain model
    - VERIFICATION: Validate project state
 
 5. ALL data must be REAL (from user answers), NOT placeholders.
 
 6. Include ALL specs with ALL acceptance criteria. Do NOT abbreviate.
 
-7. CRITICAL: Generate a SINGLE EXECUTABLE SCRIPT with ALL commands chained via &&:
+7. Do NOT generate tasks, glossary terms, or knowledge graph commands. Focus on: contexts, specs, decisions, and tech stack.
+
+8. CRITICAL: Generate a SINGLE EXECUTABLE SCRIPT with ALL commands chained via &&:
    - Every command (except the last) must end with " && \"
    - Use line continuation (\) for readability
    - Comments (# lines) are allowed between commands
@@ -275,12 +218,6 @@ const TEMPLATE_SECTIONS: &str = r#"
 cwa init "session-manager" && \
 
 # ─────────────────────────────────────────────────────────────────────────────
-# INFRASTRUCTURE (Knowledge Graph + Semantic Memory)
-# ─────────────────────────────────────────────────────────────────────────────
-cwa infra up && \
-cwa infra status && \
-
-# ─────────────────────────────────────────────────────────────────────────────
 # STRATEGIC DESIGN — Bounded Contexts (DDD)
 # Core Domain: Session management (what differentiates the product)
 # Supporting: Tab handling, Tag categorization
@@ -290,17 +227,7 @@ cwa domain context new "Tab" --description "Supporting: Capture and representati
 cwa domain context new "Tag" --description "Supporting: Categorization and filtering via colored tags" && \
 
 # ─────────────────────────────────────────────────────────────────────────────
-# UBIQUITOUS LANGUAGE — Domain Glossary (DDD)
-# Shared vocabulary between developers, users, and code
-# ─────────────────────────────────────────────────────────────────────────────
-cwa memory add "Session: Named snapshot of open tabs at a given moment" --type fact && \
-cwa memory add "Tab: Browser tab representation with URL, title, favicon, and state" --type fact && \
-cwa memory add "Tag: Colored label for categorizing and filtering sessions" --type fact && \
-cwa memory add "Restore: Action of reopening all tabs from a saved session" --type fact && \
-cwa memory add "Pin: Tab fixation state in the browser bar" --type fact && \
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ARCHITECTURAL DECISIONS (ADRs)
+# ARCHITECTURAL DECISIONS & TECH STACK (ADRs)
 # Key technical choices with rationale and alternatives considered
 # ─────────────────────────────────────────────────────────────────────────────
 cwa memory add "ADR-001: Using Chrome Storage API (sync) for persistence. Rationale: cross-device sync, 100KB space. Alternative rejected: IndexedDB (no sync)" --type decision && \
@@ -366,13 +293,6 @@ cwa spec new "Tag Filtering" \
   -c "Counter shows session count after filter applied" && \
 
 # ─────────────────────────────────────────────────────────────────────────────
-# KNOWLEDGE GRAPH SYNC
-# Synchronize domain model to Neo4j for relationship queries
-# ─────────────────────────────────────────────────────────────────────────────
-cwa graph sync && \
-cwa graph status && \
-
-# ─────────────────────────────────────────────────────────────────────────────
 # VERIFICATION
 # Generate artifacts and verify project state
 # ─────────────────────────────────────────────────────────────────────────────
@@ -387,5 +307,6 @@ cwa context status
 Generate commands for the user's prompt below using DDD/SDD methodology.
 Adapt the structure to the domain complexity — simpler projects need fewer phases.
 ALL data must be REAL (from user answers). ALL commands chained with && in a SINGLE executable script.
+Do NOT generate tasks, glossary terms, or knowledge graph commands.
 
 "#;

@@ -1,17 +1,15 @@
 //! MCP Planner Server for Claude Desktop.
 //!
-//! A full-featured MCP server that exposes ALL CWA tools plus the `cwa_plan_software`
-//! tool for generating DDD/SDD-based planning documents.
+//! A focused MCP server that exposes ONLY the `cwa_plan_software` tool
+//! for generating DDD/SDD-based planning documents.
 //! Designed to be configured in Claude Desktop's MCP settings.
 
-use cwa_db::DbPool;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use crate::planner_template;
-use crate::server::{self, JsonRpcError};
+use crate::server::JsonRpcError;
 
 // ============================================================
 // JSON-RPC TYPES
@@ -41,13 +39,8 @@ struct JsonRpcResponse {
 // ============================================================
 
 /// Run the MCP planner server over stdio.
-/// This is a full-featured server with all CWA tools plus the planner tool.
+/// Exposes only the `cwa_plan_software` tool for Claude Desktop.
 pub async fn run_planner_stdio() -> anyhow::Result<()> {
-    // Find project directory and initialize database
-    let project_dir = find_project_dir()?;
-    let db_path = project_dir.join(".cwa/cwa.db");
-    let pool = Arc::new(cwa_db::init_pool(&db_path)?);
-
     let stdin = BufReader::new(tokio::io::stdin());
     let mut stdout = tokio::io::stdout();
     let mut lines = stdin.lines();
@@ -81,26 +74,13 @@ pub async fn run_planner_stdio() -> anyhow::Result<()> {
             continue;
         }
 
-        let response = handle_request(&pool, request).await;
+        let response = handle_request(request).await;
         if write_response(&mut stdout, &response).await.is_err() {
             break;
         }
     }
 
     Ok(())
-}
-
-/// Find the project directory by looking for .cwa/cwa.db
-fn find_project_dir() -> anyhow::Result<std::path::PathBuf> {
-    let mut dir = std::env::current_dir()?;
-    loop {
-        if dir.join(".cwa/cwa.db").exists() {
-            return Ok(dir);
-        }
-        if !dir.pop() {
-            anyhow::bail!("No CWA project found. Run 'cwa init' first or navigate to a CWA project directory.");
-        }
-    }
 }
 
 /// Write a JSON-RPC response to stdout.
@@ -114,13 +94,11 @@ async fn write_response(stdout: &mut tokio::io::Stdout, response: &JsonRpcRespon
 // REQUEST ROUTING
 // ============================================================
 
-async fn handle_request(pool: &DbPool, request: JsonRpcRequest) -> JsonRpcResponse {
+async fn handle_request(request: JsonRpcRequest) -> JsonRpcResponse {
     let result = match request.method.as_str() {
         "initialize" => handle_initialize(),
         "tools/list" => handle_tools_list(),
-        "tools/call" => handle_tool_call(pool, request.params).await,
-        "resources/list" => server::get_resources_list(),
-        "resources/read" => server::read_resource(pool, request.params).await,
+        "tools/call" => handle_tool_call(request.params).await,
         _ => Err(JsonRpcError {
             code: -32601,
             message: format!("Method not found: {}", request.method),
@@ -157,48 +135,35 @@ fn handle_initialize() -> Result<serde_json::Value, JsonRpcError> {
         "capabilities": {
             "tools": {
                 "listChanged": true
-            },
-            "resources": {
-                "listChanged": true
             }
         }
     }))
 }
 
 fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
-    // Get all tools from the main server
-    let mut tools = server::get_tools_list()?;
-
-    // Add the planner tool
-    let planner_tool = serde_json::json!({
-        "name": "cwa_plan_software",
-        "description": "Generate a software plan using Domain-Driven Design (DDD) and Specification-Driven Development (SDD) methodologies. Returns executable CWA CLI commands covering: Strategic Design (bounded contexts, subdomains), Ubiquitous Language (domain glossary), Architectural Decisions (ADRs), and Specifications (source of truth with acceptance criteria). The AI asks clarifying questions before generating the plan.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "prompt": {
-                    "type": "string",
-                    "description": "Description of the desired software, feature, or system to plan"
+    Ok(serde_json::json!({
+        "tools": [{
+            "name": "cwa_plan_software",
+            "description": "Generate a software plan using Domain-Driven Design (DDD) and Specification-Driven Development (SDD) methodologies. Returns executable CWA CLI commands covering: Strategic Design (bounded contexts, subdomains), Architectural Decisions (ADRs), Tech Stack decisions, and Specifications (source of truth with acceptance criteria). The AI asks clarifying questions before generating the plan.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "Description of the desired software, feature, or system to plan"
+                    },
+                    "project_path": {
+                        "type": "string",
+                        "description": "Optional absolute path to an existing CWA project directory (contains .cwa/cwa.db). When provided, reads current project state and generates a continuation plan that integrates with existing specs and contexts."
+                    }
                 },
-                "project_path": {
-                    "type": "string",
-                    "description": "Optional absolute path to an existing CWA project directory (contains .cwa/cwa.db). When provided, reads current project state and generates a continuation plan that integrates with existing specs, contexts, and tasks."
-                }
-            },
-            "required": ["prompt"]
-        }
-    });
-
-    // Insert planner tool at the beginning
-    if let Some(tools_array) = tools["tools"].as_array_mut() {
-        tools_array.insert(0, planner_tool);
-    }
-
-    Ok(tools)
+                "required": ["prompt"]
+            }
+        }]
+    }))
 }
 
 async fn handle_tool_call(
-    pool: &DbPool,
     params: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError {
@@ -213,15 +178,16 @@ async fn handle_tool_call(
             message: "Missing tool name".to_string(),
         })?;
 
-    // Handle planner tool specially
     if name == "cwa_plan_software" {
         let args = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
         return plan_software(&args).await;
     }
 
-    // Delegate all other tools to the main server
-    // No broadcast channel for planner (uses HTTP fallback)
-    server::call_tool(pool, &None, Some(params)).await
+    // Only cwa_plan_software is available in the planner server
+    Err(JsonRpcError {
+        code: -32601,
+        message: format!("Unknown tool: {}. The planner server only exposes 'cwa_plan_software'. Use 'cwa mcp stdio' for all tools.", name),
+    })
 }
 
 // ============================================================

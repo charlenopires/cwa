@@ -12,7 +12,10 @@ mod output;
 use commands::{Cli, Commands};
 
 /// Initialize tracing with optional file logging.
-fn init_tracing(log_file: Option<&std::path::Path>) {
+///
+/// When `mcp_mode` is true, all tracing output goes to stderr with ANSI disabled
+/// to prevent corrupting the JSON-RPC protocol on stdout.
+fn init_tracing(log_file: Option<&std::path::Path>, mcp_mode: bool) {
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| "cwa=info,cwa_web=debug,cwa_mcp=debug".into());
 
@@ -36,6 +39,17 @@ fn init_tracing(log_file: Option<&std::path::Path>) {
             .with(
                 tracing_subscriber::fmt::layer()
                     .with_writer(std::sync::Mutex::new(file))
+                    .with_ansi(false),
+            )
+            .init();
+    } else if mcp_mode {
+        // MCP mode: write to stderr only, no ANSI codes
+        // Prevents tracing output from corrupting JSON-RPC on stdout
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(std::io::stderr)
                     .with_ansi(false),
             )
             .init();
@@ -67,7 +81,8 @@ async fn main() -> Result<()> {
         _ => None,
     };
 
-    init_tracing(log_file.as_deref());
+    let mcp_mode = matches!(&cli.command, Commands::Mcp(_));
+    init_tracing(log_file.as_deref(), mcp_mode);
 
     cli.execute().await
 }

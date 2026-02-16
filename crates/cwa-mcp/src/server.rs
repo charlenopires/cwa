@@ -112,7 +112,17 @@ async fn handle_request(
     let result = match request.method.as_str() {
         "initialize" => handle_initialize(),
         "tools/list" => get_tools_list(),
-        "tools/call" => call_tool(pool, broadcast_tx, request.params).await,
+        "tools/call" => {
+            // Per MCP spec, tool execution failures should be returned as
+            // successful JSON-RPC responses with isError: true, not as
+            // JSON-RPC errors. Only protocol errors (-32602, -32601) stay
+            // as JSON-RPC errors.
+            match call_tool(pool, broadcast_tx, request.params).await {
+                Ok(v) => Ok(v),
+                Err(e) if e.code == -32603 => Ok(tool_error(&e.message)),
+                Err(e) => Err(e),
+            }
+        }
         "resources/list" => get_resources_list(),
         "resources/read" => read_resource(pool, request.params).await,
         _ => Err(JsonRpcError {
@@ -711,7 +721,20 @@ pub fn get_tools_list() -> Result<serde_json::Value, JsonRpcError> {
     Ok(serde_json::json!({ "tools": tools }))
 }
 
+/// Build a tool error response with `isError: true` per MCP spec.
+/// Used for execution failures (DB, embedding, graph) — not protocol errors.
+fn tool_error(message: &str) -> serde_json::Value {
+    serde_json::json!({
+        "content": [{"type": "text", "text": format!("Error: {}", message)}],
+        "isError": true
+    })
+}
+
 /// Call a tool by name (for reuse by planner).
+///
+/// Execution errors (DB, embedding, graph failures) are returned as successful
+/// JSON-RPC responses with `isError: true` per the MCP spec.
+/// Protocol errors (missing params, unknown tool) remain as JSON-RPC errors.
 pub async fn call_tool(
     pool: &DbPool,
     broadcast_tx: &Option<BroadcastSender>,
@@ -729,16 +752,12 @@ pub async fn call_tool(
 
     let args = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
 
-    // Get default project
-    let project = cwa_core::project::get_default_project(pool)
-        .map_err(|e| JsonRpcError {
-            code: -32603,
-            message: e.to_string(),
-        })?
-        .ok_or_else(|| JsonRpcError {
-            code: -32603,
-            message: "No project found".to_string(),
-        })?;
+    // Get default project — execution failure returns isError
+    let project = match cwa_core::project::get_default_project(pool) {
+        Ok(Some(p)) => p,
+        Ok(None) => return Ok(tool_error("No project found. Run 'cwa init' first.")),
+        Err(e) => return Ok(tool_error(&format!("Database error: {}", e))),
+    };
 
     let result = match name {
         "cwa_get_project_info" => {

@@ -52,7 +52,7 @@ pub enum McpServerVariant {
     /// Standard MCP server (34 tools, 11 resources)
     #[default]
     Stdio,
-    /// Planner server with DDD/SDD methodology (35 tools, 11 resources)
+    /// Planner server with DDD/SDD methodology (1 tool: cwa_plan_software)
     Planner,
 }
 
@@ -146,26 +146,10 @@ pub async fn execute(cmd: McpCommands, project_dir: &Path) -> Result<()> {
                 "CWA Planner".cyan().bold(),
                 "server running (stdio)".bold()
             );
-            eprintln!("  {} {} tools | {} resources", "▸".dimmed(), MCP_TOOLS_COUNT + 1, MCP_RESOURCES_COUNT);
-            eprintln!("  {} Full MCP server + DDD/SDD planning tool", "▸".dimmed());
+            eprintln!("  {} 1 tool | 0 resources", "▸".dimmed());
             eprintln!();
-
-            // Print all tools by category
-            print_tools_stderr();
-
-            eprintln!("{}", "  Planner Tool (exclusive)".bold().underline());
             eprintln!("    {} {}", "cwa_plan_software".cyan(), "Generate DDD/SDD-based software plan".dimmed());
             eprintln!();
-            eprintln!("{}", "  DDD/SDD Methodology".bold().underline());
-            eprintln!("    {} Strategic Design (bounded contexts, subdomains)", "•".dimmed());
-            eprintln!("    {} Ubiquitous Language (domain glossary)", "•".dimmed());
-            eprintln!("    {} Architectural Decisions (ADRs)", "•".dimmed());
-            eprintln!("    {} Specifications (SDD source of truth)", "•".dimmed());
-            eprintln!();
-
-            // Print resources
-            print_resources_stderr();
-
             eprintln!("  {} Ctrl+C to stop", "▸".dimmed());
             eprintln!();
 
@@ -619,85 +603,6 @@ async fn uninstall_mcp_server(target: Option<McpTarget>, name: Option<String>, y
     println!();
 
     Ok(())
-}
-
-/// Print all MCP tools to stderr (for planner command)
-fn print_tools_stderr() {
-    eprintln!("{}", "  Tools".bold().underline());
-    eprintln!();
-
-    eprintln!("  {} {}", "Project & Context".yellow(), "(4)".dimmed());
-    eprintln!("    {} {}", "cwa_get_project_info".cyan(), "Get project metadata".dimmed());
-    eprintln!("    {} {}", "cwa_get_context_summary".cyan(), "Compact context summary".dimmed());
-    eprintln!("    {} {}", "cwa_get_domain_model".cyan(), "DDD bounded contexts".dimmed());
-    eprintln!("    {} {}", "cwa_get_context_map".cyan(), "Context relationships".dimmed());
-    eprintln!();
-
-    eprintln!("  {} {}", "Specifications".yellow(), "(6)".dimmed());
-    eprintln!("    {} {}", "cwa_get_spec".cyan(), "Get by ID/title".dimmed());
-    eprintln!("    {} {}", "cwa_list_specs".cyan(), "List all (filterable)".dimmed());
-    eprintln!("    {} {}", "cwa_create_spec".cyan(), "Create new".dimmed());
-    eprintln!("    {} {}", "cwa_update_spec_status".cyan(), "Update status".dimmed());
-    eprintln!("    {} {}", "cwa_add_acceptance_criteria".cyan(), "Add criteria".dimmed());
-    eprintln!("    {} {}", "cwa_validate_spec".cyan(), "Validate completeness".dimmed());
-    eprintln!();
-
-    eprintln!("  {} {}", "Tasks & Kanban".yellow(), "(7)".dimmed());
-    eprintln!("    {} {}", "cwa_get_current_task".cyan(), "Current in-progress".dimmed());
-    eprintln!("    {} {}", "cwa_list_tasks".cyan(), "List all (filterable)".dimmed());
-    eprintln!("    {} {}", "cwa_create_task".cyan(), "Create new".dimmed());
-    eprintln!("    {} {}", "cwa_update_task_status".cyan(), "Move between statuses".dimmed());
-    eprintln!("    {} {}", "cwa_generate_tasks".cyan(), "Generate from spec".dimmed());
-    eprintln!("    {} {}", "cwa_get_wip_status".cyan(), "WIP limits status".dimmed());
-    eprintln!("    {} {}", "cwa_set_wip_limit".cyan(), "Set column limit".dimmed());
-    eprintln!();
-
-    eprintln!("  {} {}", "Memory & Observations".yellow(), "(8)".dimmed());
-    eprintln!("    {} {}", "cwa_search_memory".cyan(), "Text search".dimmed());
-    eprintln!("    {} {}", "cwa_memory_semantic_search".cyan(), "Vector search (Qdrant)".dimmed());
-    eprintln!("    {} {}", "cwa_memory_search_all".cyan(), "Unified search".dimmed());
-    eprintln!("    {} {}", "cwa_memory_add".cyan(), "Store with embedding".dimmed());
-    eprintln!("    {} {}", "cwa_observe".cyan(), "Record observation".dimmed());
-    eprintln!("    {} {}", "cwa_memory_timeline".cyan(), "Recent timeline".dimmed());
-    eprintln!("    {} {}", "cwa_memory_get".cyan(), "Get by ID".dimmed());
-    eprintln!("    {} {}", "cwa_get_next_steps".cyan(), "Suggested next steps".dimmed());
-    eprintln!();
-
-    eprintln!("  {} {}", "Domain Modeling (DDD)".yellow(), "(4)".dimmed());
-    eprintln!("    {} {}", "cwa_create_context".cyan(), "Create bounded context".dimmed());
-    eprintln!("    {} {}", "cwa_create_domain_object".cyan(), "Create domain object".dimmed());
-    eprintln!("    {} {}", "cwa_get_glossary".cyan(), "Get glossary".dimmed());
-    eprintln!("    {} {}", "cwa_add_glossary_term".cyan(), "Add term".dimmed());
-    eprintln!();
-
-    eprintln!("  {} {}", "Decisions (ADRs)".yellow(), "(2)".dimmed());
-    eprintln!("    {} {}", "cwa_add_decision".cyan(), "Register ADR".dimmed());
-    eprintln!("    {} {}", "cwa_list_decisions".cyan(), "List all".dimmed());
-    eprintln!();
-
-    eprintln!("  {} {}", "Knowledge Graph (Neo4j)".yellow(), "(3)".dimmed());
-    eprintln!("    {} {}", "cwa_graph_query".cyan(), "Execute Cypher".dimmed());
-    eprintln!("    {} {}", "cwa_graph_impact".cyan(), "Impact analysis".dimmed());
-    eprintln!("    {} {}", "cwa_graph_sync".cyan(), "Sync to Neo4j".dimmed());
-    eprintln!();
-}
-
-/// Print all MCP resources to stderr (for planner command)
-fn print_resources_stderr() {
-    eprintln!("{}", "  Resources".bold().underline());
-    eprintln!();
-    eprintln!("    {} Project metadata", "project://info".green());
-    eprintln!("    {} Core values and constraints", "project://constitution".green());
-    eprintln!("    {} Active spec being worked on", "project://current-spec".green());
-    eprintln!("    {} DDD bounded contexts", "project://domain-model".green());
-    eprintln!("    {} Task board state", "project://kanban-board".green());
-    eprintln!("    {} ADR log", "project://decisions".green());
-    eprintln!("    {} All specifications", "project://specs".green());
-    eprintln!("    {} All tasks", "project://tasks".green());
-    eprintln!("    {} Domain terms", "project://glossary".green());
-    eprintln!("    {} WIP limits", "project://wip-status".green());
-    eprintln!("    {} Context relationships", "project://context-map".green());
-    eprintln!();
 }
 
 fn print_mcp_status() {
