@@ -46,6 +46,7 @@ impl QdrantStore {
     /// Create a new QdrantStore client.
     pub fn new(url: &str) -> Result<Self> {
         let client = Qdrant::from_url(url)
+            .skip_compatibility_check()
             .build()
             .context("Failed to create Qdrant client")?;
 

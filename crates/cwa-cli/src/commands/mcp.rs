@@ -123,36 +123,12 @@ pub async fn execute(cmd: McpCommands, project_dir: &Path) -> Result<()> {
 
     match cmd {
         McpCommands::Stdio => {
-            eprintln!(
-                "  {} {} {}",
-                "●".green().bold(),
-                "CWA MCP".cyan().bold(),
-                "server running (stdio)".bold()
-            );
-            eprintln!("  {} {} tools | {} resources", "▸".dimmed(), MCP_TOOLS_COUNT, MCP_RESOURCES_COUNT);
-            eprintln!("  {} Use 'cwa serve' for live WebSocket updates", "▸".dimmed());
-            eprintln!("  {} Ctrl+C to stop", "▸".dimmed());
-            eprintln!();
-
             let pool = Arc::new(cwa_db::init_pool(&db_path)?);
             // Running standalone - no broadcast channel (uses HTTP fallback)
             cwa_mcp::run_stdio_server(pool, None).await?;
         }
 
         McpCommands::Planner => {
-            eprintln!(
-                "  {} {} {}",
-                "●".cyan().bold(),
-                "CWA Planner".cyan().bold(),
-                "server running (stdio)".bold()
-            );
-            eprintln!("  {} 1 tool | 0 resources", "▸".dimmed());
-            eprintln!();
-            eprintln!("    {} {}", "cwa_plan_software".cyan(), "Generate DDD/SDD-based software plan".dimmed());
-            eprintln!();
-            eprintln!("  {} Ctrl+C to stop", "▸".dimmed());
-            eprintln!();
-
             cwa_mcp::run_planner_stdio().await?;
         }
 
@@ -200,17 +176,22 @@ fn get_server_config(variant: McpServerVariant, target: McpTarget) -> Value {
         McpServerVariant::Planner => vec!["mcp", "planner"],
     };
 
+    let command = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(String::from))
+        .unwrap_or_else(|| "cwa".to_string());
+
     // VSCode uses a different format with "servers" key instead of "mcpServers"
     match target {
         McpTarget::Vscode | McpTarget::VscodeInsiders => {
             json!({
-                "command": "cwa",
+                "command": command,
                 "args": args
             })
         }
         _ => {
             json!({
-                "command": "cwa",
+                "command": command,
                 "args": args
             })
         }

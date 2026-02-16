@@ -43,10 +43,15 @@ fn init_tracing(log_file: Option<&std::path::Path>, mcp_mode: bool) {
             )
             .init();
     } else if mcp_mode {
-        // MCP mode: write to stderr only, no ANSI codes
+        // MCP mode: restrictive filter, stderr only, no ANSI codes
         // Prevents tracing output from corrupting JSON-RPC on stdout
+        let mcp_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| {
+                "cwa=warn,cwa_mcp=warn,neo4rs=error,reqwest=error,h2=error,hyper=error,qdrant=error,tonic=error,rustls=error"
+                    .into()
+            });
         tracing_subscriber::registry()
-            .with(env_filter)
+            .with(mcp_filter)
             .with(
                 tracing_subscriber::fmt::layer()
                     .with_writer(std::io::stderr)
@@ -82,6 +87,13 @@ async fn main() -> Result<()> {
     };
 
     let mcp_mode = matches!(&cli.command, Commands::Mcp(_));
+
+    if mcp_mode {
+        colored::control::set_override(false);
+        // SAFETY: called before spawning any threads (before tokio runtime starts work)
+        unsafe { std::env::set_var("NO_COLOR", "1") };
+    }
+
     init_tracing(log_file.as_deref(), mcp_mode);
 
     cli.execute().await

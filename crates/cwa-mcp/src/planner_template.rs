@@ -137,6 +137,7 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
 - **Subdomains**: Identify Core, Supporting, and Generic subdomains
 - **Bounded Contexts**: Define clear boundaries where domain models apply
 - **Context Mapping**: Define relationships between bounded contexts
+- **Ubiquitous Language**: Domain glossary with shared vocabulary across team
 
 ### Specification-Driven Development (SDD)
 - Specifications are the SOURCE OF TRUTH, not code
@@ -149,6 +150,10 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
 - `cwa init "<name>"` — Initialize new project
 - `cwa update` — Update project info and regenerate context files
 - `cwa context status` — Show project context status
+
+### Infrastructure
+- `cwa infra up` — Start infrastructure services (Qdrant, Neo4j)
+- `cwa infra status` — Check infrastructure health
 
 ### Specifications (SDD)
 - `cwa spec new "<title>" --description "<desc>" --priority <critical|high|medium|low> -c "<criterion>"` — Create spec with criteria
@@ -164,6 +169,10 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
 ### Memory & Observations
 - `cwa memory add "<content>" --type <fact|decision|preference|pattern>` — Store memory with embedding
 
+### Knowledge Graph
+- `cwa graph sync` — Sync all project data to Neo4j knowledge graph
+- `cwa graph query "<cypher>"` — Execute Cypher query
+
 ### Code Generation
 - `cwa codegen all` — Generate all artifacts
 
@@ -178,27 +187,29 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
 
 2. After answers, create a SINGLE MARKDOWN ARTIFACT titled "CWA Bootstrap — [project-name]".
 
-3. The artifact must be ONLY a ```bash block with CWA commands. No other text.
+3. The artifact must be ONLY a ```bash block with CWA commands. No other text outside the code block (except a TECH STACK table at the very end).
 
-4. Structure your plan using DDD/SDD phases (adapt as needed):
-   - INITIALIZATION: Project setup
-   - STRATEGIC DESIGN: Identify subdomains and bounded contexts
-   - ARCHITECTURAL DECISIONS: Record ADRs as memories (--type decision)
-   - TECH STACK: Record technology choices as decisions
-   - SPECIFICATIONS: Feature specs with acceptance criteria (SDD)
-   - VERIFICATION: Validate project state
+4. Structure your plan using these 8 phases (adapt as needed):
+   - Phase 1 — INITIALIZATION: Project setup
+   - Phase 2 — INFRASTRUCTURE: Start services
+   - Phase 3 — STRATEGIC DESIGN: Identify subdomains and bounded contexts
+   - Phase 4 — DOMAIN GLOSSARY: Ubiquitous language terms as facts
+   - Phase 5 — ARCHITECTURAL DECISIONS: Record ADRs as memories (--type decision)
+   - Phase 6 — SPECIFICATIONS: Feature specs with acceptance criteria (SDD)
+   - Phase 7 — KNOWLEDGE GRAPH SYNC: Sync project to Neo4j
+   - Phase 8 — GENERATE ARTIFACTS & VERIFY: Generate code and verify state
 
 5. ALL data must be REAL (from user answers), NOT placeholders.
 
 6. Include ALL specs with ALL acceptance criteria. Do NOT abbreviate.
 
-7. Do NOT generate tasks, glossary terms, or knowledge graph commands. Focus on: contexts, specs, decisions, and tech stack.
-
-8. CRITICAL: Generate a SINGLE EXECUTABLE SCRIPT with ALL commands chained via &&:
+7. CRITICAL: Generate a SINGLE EXECUTABLE SCRIPT with ALL commands chained via &&:
    - Every command (except the last) must end with " && \"
    - Use line continuation (\) for readability
    - Comments (# lines) are allowed between commands
    - The ENTIRE script must be copy-pasteable and run as ONE command
+
+8. After the bash block, include a TECH STACK summary table in markdown with columns: Component | Decision | Rationale.
 
 "#;
 
@@ -212,33 +223,49 @@ const TEMPLATE_SECTIONS: &str = r#"
 # Copy and paste this entire block to execute all commands at once
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# ─────────────────────────────────────────────────────────────────────────────
-# INITIALIZATION
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 1 — INITIALIZATION
+# ═══════════════════════════════════════════════════════════════════════════════
 cwa init "session-manager" && \
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STRATEGIC DESIGN — Bounded Contexts (DDD)
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 2 — INFRASTRUCTURE
+# Start backing services (Qdrant for vector search, Neo4j for knowledge graph)
+# ═══════════════════════════════════════════════════════════════════════════════
+cwa infra up && \
+cwa infra status && \
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 3 — STRATEGIC DESIGN — Bounded Contexts (DDD)
 # Core Domain: Session management (what differentiates the product)
 # Supporting: Tab handling, Tag categorization
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
 cwa domain context new "Session" --description "Core Domain: Lifecycle management of tab session snapshots" && \
 cwa domain context new "Tab" --description "Supporting: Capture and representation of browser tabs" && \
 cwa domain context new "Tag" --description "Supporting: Categorization and filtering via colored tags" && \
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ARCHITECTURAL DECISIONS & TECH STACK (ADRs)
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 4 — DOMAIN GLOSSARY — Ubiquitous Language
+# Shared vocabulary so every team member and AI agent speaks the same language
+# ═══════════════════════════════════════════════════════════════════════════════
+cwa memory add "Session: A named snapshot of all currently open browser tabs, including their URLs, titles, favicons, pin states, and ordering" --type fact && \
+cwa memory add "Tab: A single browser tab captured within a session, represented by URL, title, favicon, and pin state" --type fact && \
+cwa memory add "Tag: A colored label used to categorize and filter sessions for quick retrieval" --type fact && \
+cwa memory add "Restore: The action of reopening all tabs from a saved session, preserving their original properties" --type fact && \
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 5 — ARCHITECTURAL DECISIONS (ADRs)
 # Key technical choices with rationale and alternatives considered
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
 cwa memory add "ADR-001: Using Chrome Storage API (sync) for persistence. Rationale: cross-device sync, 100KB space. Alternative rejected: IndexedDB (no sync)" --type decision && \
 cwa memory add "ADR-002: Manifest V3 with Service Worker. Rationale: current Chrome standard, required for new extensions. Background pages deprecated" --type decision && \
 cwa memory add "ADR-003: React + TailwindCSS for popup UI. Rationale: componentization and rapid development. Alternative rejected: Vanilla JS (complex for reactive UI)" --type decision && \
 cwa memory add "ADR-004: UUID v4 for session IDs. Rationale: uniqueness without coordination. Alternative: timestamp (collision risk on rapid saves)" --type decision && \
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SPECIFICATIONS — Source of Truth (SDD)
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 6 — SPECIFICATIONS — Source of Truth (SDD)
 # Each spec is a contract with acceptance criteria that drive implementation
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
 cwa spec new "Session Save" \
   --description "Save current session capturing all open tabs with metadata" \
   --priority critical \
@@ -292,21 +319,37 @@ cwa spec new "Tag Filtering" \
   -c "Clear filters button removes all active filters" \
   -c "Counter shows session count after filter applied" && \
 
-# ─────────────────────────────────────────────────────────────────────────────
-# VERIFICATION
-# Generate artifacts and verify project state
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 7 — KNOWLEDGE GRAPH SYNC
+# Sync all project data (contexts, specs, decisions) into Neo4j
+# ═══════════════════════════════════════════════════════════════════════════════
+cwa graph sync && \
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 8 — GENERATE ARTIFACTS & VERIFY
+# Generate code artifacts and verify project state
+# ═══════════════════════════════════════════════════════════════════════════════
 cwa codegen all && \
 cwa spec list && \
 cwa domain context list && \
 cwa context status
 ```
 
+### TECH STACK
+
+| Component | Decision | Rationale |
+|-----------|----------|-----------|
+| Platform | Chrome Extension (Manifest V3) | Current standard, service worker model |
+| UI Framework | React 18 | Component model, ecosystem, rapid development |
+| Styling | TailwindCSS | Utility-first, small bundle, fast iteration |
+| Storage | Chrome Storage API (sync) | Cross-device sync, no backend needed |
+| IDs | UUID v4 | Uniqueness without coordination |
+
 ## END OF EXAMPLE
 
 Generate commands for the user's prompt below using DDD/SDD methodology.
 Adapt the structure to the domain complexity — simpler projects need fewer phases.
 ALL data must be REAL (from user answers). ALL commands chained with && in a SINGLE executable script.
-Do NOT generate tasks, glossary terms, or knowledge graph commands.
+Include a TECH STACK summary table after the bash block.
 
 "#;
