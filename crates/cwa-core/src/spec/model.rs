@@ -14,6 +14,8 @@ pub struct Spec {
     pub priority: Priority,
     pub acceptance_criteria: Vec<String>,
     pub dependencies: Vec<String>,
+    /// Optional bounded context this spec belongs to.
+    pub context_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
@@ -43,6 +45,7 @@ impl Spec {
             priority: Priority::from_str(&row.priority),
             acceptance_criteria,
             dependencies,
+            context_id: row.context_id,
             created_at: row.created_at,
             updated_at: row.updated_at,
             archived_at: row.archived_at,
@@ -50,13 +53,22 @@ impl Spec {
     }
 }
 
-/// Specification status.
+/// Specification status lifecycle:
+/// `draft → active → in_review → accepted → completed → archived`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SpecStatus {
+    /// Initial state — spec is being written.
     Draft,
+    /// Spec is actively being worked on.
     Active,
-    Validated,
+    /// Spec is under review by stakeholders.
+    InReview,
+    /// Spec has been accepted and is ready for implementation.
+    Accepted,
+    /// All tasks done; spec is complete.
+    Completed,
+    /// Spec is no longer relevant.
     Archived,
 }
 
@@ -65,8 +77,12 @@ impl SpecStatus {
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "active" => Self::Active,
-            "validated" => Self::Validated,
+            "in_review" | "inreview" => Self::InReview,
+            "accepted" => Self::Accepted,
+            "completed" => Self::Completed,
             "archived" => Self::Archived,
+            // backwards-compat: "validated" maps to Accepted
+            "validated" => Self::Accepted,
             _ => Self::Draft,
         }
     }
@@ -76,7 +92,9 @@ impl SpecStatus {
         match self {
             Self::Draft => "draft",
             Self::Active => "active",
-            Self::Validated => "validated",
+            Self::InReview => "in_review",
+            Self::Accepted => "accepted",
+            Self::Completed => "completed",
             Self::Archived => "archived",
         }
     }
@@ -84,14 +102,16 @@ impl SpecStatus {
     /// Check if transition to another status is valid.
     pub fn can_transition_to(&self, to: &Self) -> bool {
         match (self, to) {
-            // Draft can become active
+            // Normal lifecycle progression
             (Self::Draft, Self::Active) => true,
-            // Active can be validated or archived
-            (Self::Active, Self::Validated) => true,
-            (Self::Active, Self::Archived) => true,
-            // Validated can be archived
-            (Self::Validated, Self::Archived) => true,
-            // Same state is always valid
+            (Self::Active, Self::InReview) => true,
+            (Self::InReview, Self::Accepted) => true,
+            (Self::Accepted, Self::Active) => true,   // back to active if rejected
+            (Self::Accepted, Self::Completed) => true,
+            // Any non-archived state can be archived
+            (Self::Draft | Self::Active | Self::InReview | Self::Accepted | Self::Completed,
+             Self::Archived) => true,
+            // Same state is always valid (idempotent)
             (a, b) if a == b => true,
             _ => false,
         }

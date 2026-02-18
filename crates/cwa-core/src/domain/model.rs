@@ -103,15 +103,28 @@ impl DomainObject {
     }
 }
 
-/// Type of domain object.
+/// Type of domain object (tactical DDD + hexagonal architecture).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ObjectType {
+    /// Domain entity — has identity and lifecycle.
     Entity,
+    /// Value object — immutable, equality by value.
     ValueObject,
+    /// Aggregate root — consistency boundary.
     Aggregate,
+    /// Domain service — stateless operation.
     Service,
+    /// General domain event (deprecated alias for DomainEvent).
     Event,
+    /// Explicit domain event — something that happened in the domain.
+    DomainEvent,
+    /// Saga / process manager — long-running business process.
+    Saga,
+    /// Port — interface defining an external dependency (hexagonal).
+    Port,
+    /// Adapter — concrete implementation of a port.
+    Adapter,
 }
 
 impl ObjectType {
@@ -119,10 +132,14 @@ impl ObjectType {
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "entity" => Self::Entity,
-            "value_object" => Self::ValueObject,
+            "value_object" | "valueobject" => Self::ValueObject,
             "aggregate" => Self::Aggregate,
             "service" => Self::Service,
             "event" => Self::Event,
+            "domain_event" | "domainevent" => Self::DomainEvent,
+            "saga" => Self::Saga,
+            "port" => Self::Port,
+            "adapter" => Self::Adapter,
             _ => Self::Entity,
         }
     }
@@ -135,6 +152,10 @@ impl ObjectType {
             Self::Aggregate => "aggregate",
             Self::Service => "service",
             Self::Event => "event",
+            Self::DomainEvent => "domain_event",
+            Self::Saga => "saga",
+            Self::Port => "port",
+            Self::Adapter => "adapter",
         }
     }
 }
@@ -210,10 +231,55 @@ pub struct ContextMap {
     pub relationships: Vec<ContextRelationship>,
 }
 
-/// A relationship between contexts.
+/// A relationship between bounded contexts (DDD context mapping patterns).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextRelationship {
     pub upstream_id: String,
     pub downstream_id: String,
-    pub relationship_type: String,
+    pub relationship_type: ContextRelationshipType,
+}
+
+/// DDD context mapping relationship patterns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextRelationshipType {
+    /// Downstream conforms to upstream's model without negotiation.
+    Conformist,
+    /// Downstream uses an anti-corruption layer to translate upstream concepts.
+    AntiCorruptionLayer,
+    /// Upstream publishes a stable, documented API for multiple downstreams.
+    OpenHostService,
+    /// Both contexts change in lockstep; tight coupling.
+    Partnership,
+    /// A piece of the model co-owned by two bounded contexts.
+    SharedKernel,
+    /// Upstream provides what downstream needs; contractual relationship.
+    CustomerSupplier,
+}
+
+impl ContextRelationshipType {
+    /// Parse from string (case-insensitive, various spellings).
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().replace(['-', ' '], "_").as_str() {
+            "conformist" => Self::Conformist,
+            "anti_corruption_layer" | "acl" => Self::AntiCorruptionLayer,
+            "open_host_service" | "ohs" => Self::OpenHostService,
+            "partnership" => Self::Partnership,
+            "shared_kernel" | "sk" => Self::SharedKernel,
+            "customer_supplier" | "cs" => Self::CustomerSupplier,
+            _ => Self::CustomerSupplier,
+        }
+    }
+
+    /// Convert to string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Conformist => "conformist",
+            Self::AntiCorruptionLayer => "anti_corruption_layer",
+            Self::OpenHostService => "open_host_service",
+            Self::Partnership => "partnership",
+            Self::SharedKernel => "shared_kernel",
+            Self::CustomerSupplier => "customer_supplier",
+        }
+    }
 }

@@ -42,7 +42,9 @@ pub fn print_specs_table(specs: &[Spec]) {
         let status_colored = match spec.status {
             cwa_core::spec::model::SpecStatus::Draft => "draft".dimmed(),
             cwa_core::spec::model::SpecStatus::Active => "active".yellow(),
-            cwa_core::spec::model::SpecStatus::Validated => "validated".green(),
+            cwa_core::spec::model::SpecStatus::InReview => "in_review".cyan(),
+            cwa_core::spec::model::SpecStatus::Accepted => "accepted".blue(),
+            cwa_core::spec::model::SpecStatus::Completed => "completed".green(),
             cwa_core::spec::model::SpecStatus::Archived => "archived".dimmed(),
         };
 

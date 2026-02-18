@@ -5,7 +5,7 @@ pub mod model;
 use crate::error::CwaResult;
 use cwa_db::DbPool;
 use cwa_db::queries::domains as queries;
-use model::{BoundedContext, DomainObject, GlossaryTerm, DomainModel, ContextMap};
+use model::{BoundedContext, ContextRelationshipType, DomainObject, GlossaryTerm, DomainModel, ContextMap};
 use uuid::Uuid;
 
 /// Create a bounded context.
@@ -113,7 +113,7 @@ pub async fn get_context_map(pool: &DbPool, project_id: &str) -> CwaResult<Conte
             relationships.push(model::ContextRelationship {
                 upstream_id: context.id.clone(),
                 downstream_id: downstream_id.clone(),
-                relationship_type: "customer-supplier".to_string(),
+                relationship_type: ContextRelationshipType::CustomerSupplier,
             });
         }
     }

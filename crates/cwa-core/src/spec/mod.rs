@@ -125,14 +125,38 @@ pub async fn add_acceptance_criteria(
     Ok(Spec::from_row(row))
 }
 
-/// Validate a spec.
+/// Validate a spec for SDD completeness.
+///
+/// Checks: non-empty title, description present, ≥1 acceptance criteria,
+/// priority explicitly set, and context association.
 pub async fn validate_spec(pool: &DbPool, id: &str) -> CwaResult<ValidationResult> {
     let spec = queries::get_spec(pool, id).await?;
 
     let mut issues = Vec::new();
 
-    if spec.acceptance_criteria.is_none() {
-        issues.push("Missing acceptance criteria".to_string());
+    if spec.title.trim().is_empty() {
+        issues.push("Title must not be empty".to_string());
+    } else if spec.title.len() < 5 {
+        issues.push("Title is too short — be more descriptive".to_string());
+    }
+
+    if spec.description.as_ref().map(|d| d.trim().is_empty()).unwrap_or(true) {
+        issues.push("Missing description — explain the business need".to_string());
+    }
+
+    let criteria_count = spec
+        .acceptance_criteria
+        .as_ref()
+        .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
+        .map(|v| v.len())
+        .unwrap_or(0);
+
+    if criteria_count == 0 {
+        issues.push("Missing acceptance criteria — add at least one testable criterion".to_string());
+    }
+
+    if spec.context_id.is_none() {
+        issues.push("Not associated with a bounded context — link with context_id".to_string());
     }
 
     Ok(ValidationResult {
