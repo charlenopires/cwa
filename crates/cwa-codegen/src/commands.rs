@@ -128,7 +128,7 @@ Show current project status including specs, tasks, and domain model.
 fn next_task_command() -> GeneratedCommand {
     let content = r#"# /next-task
 
-Get and start working on the next available task.
+Get and start working on the next available task using the CWA Kanban workflow.
 
 ## Usage
 
@@ -138,18 +138,129 @@ Get and start working on the next available task.
 
 ## Steps
 
-1. Call MCP tool `cwa_get_next_steps` to identify next available work
-2. If a task is available:
-   a. Move it to "in_progress" using `cwa_update_task_status`
-   b. Display task details and context
-   c. Begin implementation planning
-3. If no tasks available, suggest creating new tasks or specs
+1. Run `cwa task wip` to verify WIP capacity before starting
+2. Call `cwa_get_next_steps` to identify the next available work
+3. If a task is available:
+   a. `cwa task move <id> todo` (ensure it's in todo first)
+   b. `cwa task move <id> in_progress`
+   c. `cwa task board` to confirm the move
+   d. Load task details via `cwa_get_current_task`
+   e. Load spec via `cwa_get_spec` if the task is linked to a spec
+   f. Begin TDD: write failing test first, then implement
+4. When work is complete:
+   a. `cwa task move <id> review`
+   b. Run tests and get review approval
+   c. `cwa task move <id> done`
+   d. `cwa task board` to see updated board
+5. If no tasks available, suggest `cwa task generate <spec-id>` or creating new specs
 "#;
 
     GeneratedCommand {
         filename: "next-task.md".to_string(),
         content: content.to_string(),
         name: "next-task".to_string(),
+    }
+}
+
+/// Generate the /kanban command.
+fn kanban_command() -> GeneratedCommand {
+    let content = r#"# /kanban
+
+Display the Kanban board and manage task flow.
+
+## Usage
+
+```
+/kanban
+```
+
+## Steps
+
+1. Run `cwa task board` for a terminal view of the Kanban board
+2. Call `cwa_get_wip_status` for WIP limits and current counts per column
+3. Call `cwa_list_tasks` for full task details per column
+4. Open http://127.0.0.1:3030 for the web view (if `cwa serve` is running)
+
+## Tips
+
+- Tasks in **in_progress** that exceed WIP limits slow the team — resolve them first
+- Use `cwa task move <id> <column>` to move tasks between columns
+- Run `cwa task wip` to check WIP limit status quickly
+"#;
+
+    GeneratedCommand {
+        filename: "kanban.md".to_string(),
+        content: content.to_string(),
+        name: "kanban".to_string(),
+    }
+}
+
+/// Generate the /wip-check command.
+fn wip_check_command() -> GeneratedCommand {
+    let content = r#"# /wip-check
+
+Verify WIP limits and flag violations to maintain flow efficiency.
+
+## Usage
+
+```
+/wip-check
+```
+
+## Steps
+
+1. Call `cwa_get_wip_status` to get limits and current counts per column
+2. Flag any column at or over its WIP limit
+3. Suggest which tasks to move to restore flow:
+   - Move blocked tasks back to `todo`
+   - Prioritize completing `review` tasks before starting new ones
+4. Run `cwa task wip` for a terminal summary
+
+## WIP Limit Guidelines
+
+- **in_progress**: max 2 (focus on completion, not starting)
+- **review**: max 3 (unreviewed work is unfinished work)
+- Columns at 100% capacity should trigger a stop-and-fix response
+"#;
+
+    GeneratedCommand {
+        filename: "wip-check.md".to_string(),
+        content: content.to_string(),
+        name: "wip-check".to_string(),
+    }
+}
+
+/// Generate the /sync command.
+fn sync_command() -> GeneratedCommand {
+    let content = r#"# /sync
+
+Sync project data to the knowledge graph and vector store, then regenerate CLAUDE.md.
+
+## Usage
+
+```
+/sync
+```
+
+## Steps
+
+1. Call `cwa_graph_sync` to sync Redis → Neo4j knowledge graph
+2. Run `cwa memory sync` to update CLAUDE.md with current observations
+3. Run `cwa codegen claude-md` to regenerate CLAUDE.md from current state
+4. Report sync summary: contexts synced, specs synced, memories indexed
+
+## When to Use
+
+- After a major batch of domain modeling (`cwa domain context new`, `cwa domain object new`)
+- After recording many observations (`cwa memory observe`)
+- Before a planning session to ensure CLAUDE.md reflects current state
+- After `cwa codegen all` to keep the knowledge graph up to date
+"#;
+
+    GeneratedCommand {
+        filename: "sync.md".to_string(),
+        content: content.to_string(),
+        name: "sync".to_string(),
     }
 }
 
@@ -342,11 +453,13 @@ pub fn generate_all_commands() -> Vec<GeneratedCommand> {
         run_backlog_command(),
         project_status_command(),
         next_task_command(),
-        // Phase 9: New commands
         spec_review_command(),
         domain_model_command(),
         observe_command(),
         tech_stack_command(),
+        kanban_command(),
+        wip_check_command(),
+        sync_command(),
     ]
 }
 
