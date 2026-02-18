@@ -170,6 +170,10 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
 - `cwa graph sync` — Sync all project data to Neo4j knowledge graph
 - `cwa graph query "<cypher>"` — Execute Cypher query
 
+### Tech Stack
+- `cwa stack set <tech> [<tech2>...]` — Set project tech stack (writes .cwa/stack.json)
+- `cwa stack show` — Show current tech stack and available agent templates
+
 ### Code Generation
 - `cwa codegen all` — Generate all artifacts
 
@@ -186,7 +190,9 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
 
 3. The artifact must be ONLY a ```bash block with CWA commands. No other text outside the code block (except a TECH STACK table at the very end).
 
-4. Structure your plan using these 9 phases (adapt as needed):
+4. Include `cwa stack set <technologies>` in Phase 9 BEFORE `cwa codegen all`. Use ONLY the technologies from the TECH STACK table you generate. This ensures tech-stack-aware expert agents are automatically selected.
+
+5. Structure your plan using these 9 phases (adapt as needed):
    - Phase 1 — INITIALIZATION: Project setup
    - Phase 2 — INFRASTRUCTURE: Start services
    - Phase 3 — STRATEGIC DESIGN: Identify subdomains and bounded contexts
@@ -197,17 +203,17 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
    - Phase 8 — KNOWLEDGE GRAPH SYNC: Sync project to Neo4j
    - Phase 9 — GENERATE ARTIFACTS & VERIFY: Generate code and verify state
 
-5. ALL data must be REAL (from user answers), NOT placeholders.
+6. ALL data must be REAL (from user answers), NOT placeholders.
 
-6. Include ALL specs with ALL acceptance criteria. Do NOT abbreviate.
+7. Include ALL specs with ALL acceptance criteria. Do NOT abbreviate.
 
-7. CRITICAL: Generate a SINGLE EXECUTABLE SCRIPT with ALL commands chained via &&:
+8. CRITICAL: Generate a SINGLE EXECUTABLE SCRIPT with ALL commands chained via &&:
    - Every command (except the last) must end with " && \"
    - Use line continuation (\) for readability
    - Comments (# lines) are allowed between commands
    - The ENTIRE script must be copy-pasteable and run as ONE command
 
-8. After the bash block, include a TECH STACK summary table in markdown with columns: Component | Decision | Rationale.
+9. After the bash block, include a TECH STACK summary table in markdown with columns: Component | Decision | Rationale.
 
 "#;
 
@@ -337,9 +343,17 @@ cwa graph sync && \
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 9 — GENERATE ARTIFACTS & VERIFY
-# Generate code artifacts and verify project state
+# Set tech stack BEFORE codegen so expert agents are selected automatically
 # ═══════════════════════════════════════════════════════════════════════════════
+cwa stack set typescript react tailwindcss && \
+
+# Generate all artifacts (expert agents, skills, commands, hooks, CLAUDE.md, .mcp.json)
 cwa codegen all && \
+
+# Install CWA MCP to Claude Code (project-local .mcp.json auto-detection)
+cwa mcp install claude-code && \
+
+# Verify project state
 cwa spec list && \
 cwa domain context list && \
 cwa context status
