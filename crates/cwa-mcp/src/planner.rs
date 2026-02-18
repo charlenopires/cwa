@@ -5,6 +5,7 @@
 //! Designed to be configured in Claude Desktop's MCP settings.
 
 use serde::{Deserialize, Serialize};
+use std::io::IsTerminal;
 use std::path::Path;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -38,20 +39,53 @@ struct JsonRpcResponse {
 // SERVER LOOP
 // ============================================================
 
+fn print_startup_banner(project: Option<&Path>) {
+    if std::io::stderr().is_terminal() {
+        let version = env!("CARGO_PKG_VERSION");
+        eprintln!();
+        eprintln!(
+            "\x1b[1;36m  ◆  cwa-planner\x1b[0m  \x1b[1;33mv{version}\x1b[0m"
+        );
+        eprintln!("\x1b[90m     MCP Server · JSON-RPC 2.0 · stdio\x1b[0m");
+        eprintln!("\x1b[90m     Tools (1):\x1b[0m");
+        eprintln!("\x1b[90m       ◦ \x1b[0mcwa_plan_software");
+        eprintln!("\x1b[90m     Resources:  none\x1b[0m");
+        if let Some(p) = project {
+            eprintln!(
+                "\x1b[90m     Project  \x1b[0m\x1b[32m{}\x1b[0m",
+                p.display()
+            );
+        }
+        eprintln!(
+            "\x1b[90m     Listening on stdin · press \x1b[0m\x1b[1mCtrl+C\x1b[0m\x1b[90m to stop\x1b[0m"
+        );
+        eprintln!();
+    } else {
+        let version = env!("CARGO_PKG_VERSION");
+        eprintln!("[cwa-planner v{version}] MCP server started. Listening on stdin (JSON-RPC 2.0). Press Ctrl+C to stop.");
+        eprintln!("[cwa-planner] Tools: cwa_plan_software | Resources: none");
+        if let Some(p) = project {
+            eprintln!("[cwa-planner] Project: {}", p.display());
+        }
+    }
+}
+
 /// Run the MCP planner server over stdio.
 /// Exposes only the `cwa_plan_software` tool for Claude Desktop.
 ///
-/// If `project_dir` contains a valid CWA project (`.cwa/cwa.db`), it is used
+/// If `project_dir` contains a valid CWA project (`.cwa/` directory), it is used
 /// as the default project context for `cwa_plan_software` calls when the caller
 /// does not supply an explicit `project_path` argument.
 pub async fn run_planner_stdio(project_dir: &Path) -> anyhow::Result<()> {
-    // Only treat as a valid project if the database file exists.
+    // Only treat as a valid project if the .cwa/ directory exists.
     let effective_project: Option<std::path::PathBuf> =
-        if project_dir.join(".cwa/cwa.db").exists() {
+        if project_dir.join(".cwa").is_dir() {
             Some(project_dir.to_path_buf())
         } else {
             None
         };
+
+    print_startup_banner(effective_project.as_deref());
 
     let stdin = BufReader::new(tokio::io::stdin());
     let mut stdout = tokio::io::stdout();
@@ -111,6 +145,7 @@ async fn handle_request(request: JsonRpcRequest, default_project: Option<&Path>)
         "initialize" => handle_initialize(),
         "tools/list" => handle_tools_list(),
         "tools/call" => handle_tool_call(request.params, default_project).await,
+        "resources/list" => Ok(serde_json::json!({ "resources": [] })),
         _ => Err(JsonRpcError {
             code: -32601,
             message: format!("Method not found: {}", request.method),
@@ -166,7 +201,7 @@ fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
                     },
                     "project_path": {
                         "type": "string",
-                        "description": "Optional absolute path to an existing CWA project directory (contains .cwa/cwa.db). When provided, reads current project state and generates a continuation plan that integrates with existing specs and contexts."
+                        "description": "Optional absolute path to an existing CWA project directory (contains a .cwa/ directory). When provided, reads current project state and generates a continuation plan that integrates with existing specs and contexts."
                     }
                 },
                 "required": ["prompt"]

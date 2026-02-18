@@ -1418,6 +1418,12 @@ echo "Pushed successfully!"
     Ok(())
 }
 
+/// Regenerate the docker-compose.yml and supporting scripts for an existing project.
+/// Safe to call on existing projects — only template files are overwritten, `.env` is preserved.
+pub async fn regenerate_docker_compose(target_dir: &Path, name: &str) -> CwaResult<()> {
+    create_docker_infrastructure(target_dir, name).await
+}
+
 /// Generate initial project from a prompt (placeholder).
 pub async fn generate_from_prompt(_target_dir: &Path, _prompt: &str) -> CwaResult<()> {
     // This would use Claude to generate initial spec from prompt

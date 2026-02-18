@@ -38,6 +38,10 @@ pub enum InfraCommands {
         confirm: bool,
     },
 
+    /// Regenerate docker-compose.yml from the current CWA template
+    #[command(name = "regenerate-compose")]
+    RegenerateCompose,
+
     /// Manage Ollama models
     Models {
         #[command(subcommand)]
@@ -79,8 +83,18 @@ pub async fn execute(cmd: InfraCommands, project_dir: &Path) -> Result<()> {
         InfraCommands::Status => cmd_status().await,
         InfraCommands::Logs { service, follow } => cmd_logs(project_dir, service, follow),
         InfraCommands::Reset { confirm } => cmd_reset(project_dir, confirm),
+        InfraCommands::RegenerateCompose => cmd_regenerate_compose(project_dir).await,
         InfraCommands::Models { cmd } => cmd_models(project_dir, cmd).await,
     }
+}
+
+/// Derive a Docker project name from the project directory's base name.
+fn project_name(project_dir: &Path) -> String {
+    project_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("cwa")
+        .to_string()
 }
 
 /// Find the docker-compose.yml file.
@@ -109,6 +123,7 @@ fn find_compose_file(project_dir: &Path) -> Result<PathBuf> {
 async fn cmd_up(project_dir: &Path) -> Result<()> {
     let compose_file = find_compose_file(project_dir)?;
     let compose_dir = compose_file.parent().unwrap();
+    let name = project_name(project_dir);
 
     println!("{}", "Starting CWA infrastructure...".bold());
 
@@ -123,7 +138,7 @@ async fn cmd_up(project_dir: &Path) -> Result<()> {
 
     // Run docker compose up
     let status = Command::new("docker")
-        .args(["compose", "-f", compose_file.to_str().unwrap(), "up", "-d"])
+        .args(["compose", "-f", compose_file.to_str().unwrap(), "-p", &name, "up", "-d"])
         .status()
         .context("Failed to run 'docker compose'. Is Docker installed?")?;
 
@@ -147,7 +162,7 @@ async fn cmd_up(project_dir: &Path) -> Result<()> {
     println!("\n{}", "Pulling embedding model (nomic-embed-text)...".dimmed());
     let pull_status = Command::new("docker")
         .args([
-            "compose", "-f", compose_file.to_str().unwrap(),
+            "compose", "-f", compose_file.to_str().unwrap(), "-p", &name,
             "exec", "-T", "ollama", "ollama", "pull", "nomic-embed-text"
         ])
         .status();
@@ -162,7 +177,7 @@ async fn cmd_up(project_dir: &Path) -> Result<()> {
     println!("\n{}", format!("Pulling generation model ({})...", gen_model).dimmed());
     let gen_pull_status = Command::new("docker")
         .args([
-            "compose", "-f", compose_file.to_str().unwrap(),
+            "compose", "-f", compose_file.to_str().unwrap(), "-p", &name,
             "exec", "-T", "ollama", "ollama", "pull", &gen_model
         ])
         .status();
@@ -194,13 +209,14 @@ async fn cmd_up(project_dir: &Path) -> Result<()> {
 /// Stop all infrastructure services.
 fn cmd_down(project_dir: &Path, clean: bool) -> Result<()> {
     let compose_file = find_compose_file(project_dir)?;
+    let name = project_name(project_dir);
 
     if clean {
         println!("{}", "Stopping and removing CWA infrastructure...".bold());
 
         // Stop containers and remove volumes
         let status = Command::new("docker")
-            .args(["compose", "-f", compose_file.to_str().unwrap(), "down", "-v", "--rmi", "all"])
+            .args(["compose", "-f", compose_file.to_str().unwrap(), "-p", &name, "down", "-v", "--rmi", "all"])
             .status()
             .context("Failed to run 'docker compose'")?;
 
@@ -218,7 +234,7 @@ fn cmd_down(project_dir: &Path, clean: bool) -> Result<()> {
         println!("{}", "Stopping CWA infrastructure...".bold());
 
         let status = Command::new("docker")
-            .args(["compose", "-f", compose_file.to_str().unwrap(), "down"])
+            .args(["compose", "-f", compose_file.to_str().unwrap(), "-p", &name, "down"])
             .status()
             .context("Failed to run 'docker compose'")?;
 
@@ -267,8 +283,10 @@ async fn cmd_status() -> Result<()> {
 /// Show logs from Docker services.
 fn cmd_logs(project_dir: &Path, service: Option<String>, follow: bool) -> Result<()> {
     let compose_file = find_compose_file(project_dir)?;
+    let name = project_name(project_dir);
+    let compose_str = compose_file.to_str().unwrap();
 
-    let mut args = vec!["compose", "-f", compose_file.to_str().unwrap(), "logs"];
+    let mut args = vec!["compose", "-f", compose_str, "-p", name.as_str(), "logs"];
 
     if follow {
         args.push("-f");
@@ -304,11 +322,12 @@ fn cmd_reset(project_dir: &Path, confirm: bool) -> Result<()> {
     }
 
     let compose_file = find_compose_file(project_dir)?;
+    let name = project_name(project_dir);
 
     println!("{}", "Resetting CWA infrastructure...".red().bold());
 
     let status = Command::new("docker")
-        .args(["compose", "-f", compose_file.to_str().unwrap(), "down", "-v"])
+        .args(["compose", "-f", compose_file.to_str().unwrap(), "-p", &name, "down", "-v"])
         .status()
         .context("Failed to run 'docker compose'")?;
 
@@ -417,6 +436,7 @@ async fn get_ollama_models() -> Result<Vec<String>> {
 /// Manage Ollama models.
 async fn cmd_models(project_dir: &Path, cmd: Option<ModelsCommands>) -> Result<()> {
     let compose_file = find_compose_file(project_dir)?;
+    let name = project_name(project_dir);
 
     match cmd {
         None => {
@@ -456,7 +476,7 @@ async fn cmd_models(project_dir: &Path, cmd: Option<ModelsCommands>) -> Result<(
 
             let status = Command::new("docker")
                 .args([
-                    "compose", "-f", compose_file.to_str().unwrap(),
+                    "compose", "-f", compose_file.to_str().unwrap(), "-p", &name,
                     "exec", "-T", "ollama", "ollama", "pull", &model
                 ])
                 .status()
@@ -476,7 +496,7 @@ async fn cmd_models(project_dir: &Path, cmd: Option<ModelsCommands>) -> Result<(
                 println!("{}", format!("Model {} not found. Pulling...", model).yellow());
                 let status = Command::new("docker")
                     .args([
-                        "compose", "-f", compose_file.to_str().unwrap(),
+                        "compose", "-f", compose_file.to_str().unwrap(), "-p", &name,
                         "exec", "-T", "ollama", "ollama", "pull", &model
                     ])
                     .status();
@@ -493,4 +513,18 @@ async fn cmd_models(project_dir: &Path, cmd: Option<ModelsCommands>) -> Result<(
             Ok(())
         }
     }
+}
+
+/// Regenerate docker-compose.yml from the current CWA template.
+async fn cmd_regenerate_compose(project_dir: &Path) -> Result<()> {
+    let name = project_name(project_dir);
+    println!("{}", format!("Regenerating docker-compose for project '{}'...", name).bold());
+
+    cwa_core::project::scaffold::regenerate_docker_compose(project_dir, &name)
+        .await
+        .context("Failed to regenerate docker-compose")?;
+
+    println!("{}", "  docker-compose.yml updated".green());
+    println!("{}", "  Run 'cwa infra up' to apply changes.".dimmed());
+    Ok(())
 }
