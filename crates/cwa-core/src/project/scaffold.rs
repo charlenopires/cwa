@@ -6,11 +6,15 @@ use std::path::Path;
 use tokio::fs;
 
 /// Create a new CWA project with full directory structure.
-pub async fn create_project(target_dir: &Path, name: &str) -> CwaResult<()> {
+///
+/// Returns `true` if the project was also registered in the database (Redis available),
+/// or `false` if files were created but DB registration was skipped (Redis not running).
+/// In both cases the project files are ready to use.
+pub async fn create_project(target_dir: &Path, name: &str) -> CwaResult<bool> {
     // Create directory structure
     create_directories(target_dir).await?;
 
-    // Create initial files
+    // Create initial files — these never require Redis.
     create_claude_md(target_dir, name).await?;
     create_mcp_json(target_dir).await?;
     create_constitution(target_dir, name).await?;
@@ -22,22 +26,42 @@ pub async fn create_project(target_dir: &Path, name: &str) -> CwaResult<()> {
     create_docker_infrastructure(target_dir).await?;
     create_git_scripts(target_dir).await?;
 
-    // Initialize database (Redis)
+    // Register project in Redis (optional — infra may not be running yet).
+    // ConnectionManager::new() can return Ok() immediately without a live connection,
+    // so we wrap everything in a short timeout to avoid hanging indefinitely.
     let redis_url = std::env::var("REDIS_URL")
         .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-    let pool = cwa_db::init_pool(&redis_url).await?;
 
-    // Create project record
-    let project = crate::project::create_project(&pool, name, None).await?;
+    let db_registered = match tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        async {
+            let pool = cwa_db::init_pool(&redis_url).await?;
+            let project = crate::project::create_project(&pool, name, None).await?;
+            let constitution_path = target_dir.join(".cwa/constitution.md");
+            crate::project::set_constitution_path(
+                &pool,
+                &project.id,
+                constitution_path.to_str().unwrap(),
+            )
+            .await?;
+            task::init_kanban_columns(&pool, &project.id).await?;
+            Ok::<_, crate::error::CwaError>(())
+        },
+    )
+    .await
+    {
+        Ok(Ok(())) => true,
+        Ok(Err(e)) => {
+            tracing::debug!("Redis unavailable, skipping DB registration: {e}");
+            false
+        }
+        Err(_elapsed) => {
+            tracing::debug!("Redis connection timed out, skipping DB registration");
+            false
+        }
+    };
 
-    // Update constitution path
-    let constitution_path = target_dir.join(".cwa/constitution.md");
-    crate::project::set_constitution_path(&pool, &project.id, constitution_path.to_str().unwrap()).await?;
-
-    // Initialize Kanban columns
-    task::init_kanban_columns(&pool, &project.id).await?;
-
-    Ok(())
+    Ok(db_registered)
 }
 
 /// Create all required directories.

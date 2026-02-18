@@ -30,8 +30,8 @@ pub async fn execute(args: InitArgs) -> Result<()> {
         args.name.cyan()
     );
 
-    // Create project structure
-    cwa_core::project::scaffold::create_project(&target_dir, &args.name).await?;
+    // Create project structure (files always; DB registration only if Redis is up)
+    let db_registered = cwa_core::project::scaffold::create_project(&target_dir, &args.name).await?;
 
     // If from-prompt provided, generate initial spec
     if let Some(prompt) = args.from_prompt {
@@ -45,9 +45,22 @@ pub async fn execute(args: InitArgs) -> Result<()> {
     println!();
     println!("{}", "Next steps:".bold());
     println!("  cd {}", target_dir.display());
-    println!("  cwa spec new <feature>    # Create your first specification");
-    println!("  cwa domain discover       # Discover domain concepts");
-    println!("  cwa serve                 # Start web dashboard");
+
+    if db_registered {
+        println!("  cwa infra up              # Start infrastructure (if not running)");
+        println!("  cwa spec new <feature>    # Create your first specification");
+        println!("  cwa domain discover       # Discover domain concepts");
+        println!("  cwa serve                 # Start web dashboard");
+    } else {
+        println!(
+            "  {} Infrastructure not running — start it to enable the Kanban board and memory:",
+            "!".yellow().bold()
+        );
+        println!("  cwa infra up              # Start Redis, Neo4j, Qdrant, Ollama");
+        println!("  cwa spec new <feature>    # Create your first specification");
+        println!("  cwa domain discover       # Discover domain concepts");
+        println!("  cwa serve                 # Start web dashboard");
+    }
 
     Ok(())
 }
