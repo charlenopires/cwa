@@ -206,15 +206,31 @@ async fn cmd_claude_md(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Pa
 async fn cmd_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
     println!("{}", "Generating all artifacts...".bold());
 
-    // Agents
+    // Tech-stack-aware agents
+    let tech_stack = cwa_db::queries::projects::get_tech_stack(pool, project_id).await.unwrap_or_default();
+    let tech_agents = cwa_codegen::select_agents_for_stack(&tech_stack);
+    if dry_run {
+        println!(
+            "  {} tech agents (stack: {}): {}",
+            tech_agents.len(),
+            if tech_stack.is_empty() { "none".to_string() } else { tech_stack.join(", ") },
+            tech_agents.iter().map(|a| a.filename.as_str()).collect::<Vec<_>>().join(", ")
+        );
+    } else {
+        let output_dir = project_dir.join(".claude/agents");
+        let written = cwa_codegen::write_tech_agents(&tech_agents, &output_dir)?;
+        println!("  {} {} tech agents", "✓".green(), written.len());
+    }
+
+    // Domain agents (per bounded context)
     let agents = cwa_codegen::generate_all_agents(pool, project_id).await?;
     if !agents.is_empty() {
         if dry_run {
-            println!("  {} agents: {}", agents.len(), agents.iter().map(|a| a.filename.as_str()).collect::<Vec<_>>().join(", "));
+            println!("  {} domain agents: {}", agents.len(), agents.iter().map(|a| a.filename.as_str()).collect::<Vec<_>>().join(", "));
         } else {
             let output_dir = project_dir.join(".claude/agents");
             let written = cwa_codegen::write_agents(&agents, &output_dir)?;
-            println!("  {} {} agents", "✓".green(), written.len());
+            println!("  {} {} domain agents", "✓".green(), written.len());
         }
     }
 
@@ -258,6 +274,14 @@ async fn cmd_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dr
     } else {
         cwa_codegen::write_claude_md(&claude_md, project_dir)?;
         println!("  {} CLAUDE.md", "✓".green());
+    }
+
+    // .mcp.json
+    if dry_run {
+        println!("  .mcp.json");
+    } else {
+        cwa_codegen::write_mcp_config(project_dir)?;
+        println!("  {} .mcp.json", "✓".green());
     }
 
     if dry_run {
