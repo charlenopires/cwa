@@ -141,6 +141,22 @@ pub static ALL_TECH_AGENTS: &[TechAgentTemplate] = &[
         technologies: &[], // docker is always useful
         content: include_str!("templates/agents/common/docker-expert.md"),
     },
+    // ── SDD/DDD workflow agents (always included) ───────────────────────────
+    TechAgentTemplate {
+        filename: "spec-reviewer.md",
+        technologies: &[],
+        content: include_str!("templates/agents/common/spec-reviewer.md"),
+    },
+    TechAgentTemplate {
+        filename: "kanban-manager.md",
+        technologies: &[],
+        content: include_str!("templates/agents/common/kanban-manager.md"),
+    },
+    TechAgentTemplate {
+        filename: "memory-observer.md",
+        technologies: &[],
+        content: include_str!("templates/agents/common/memory-observer.md"),
+    },
     // ── Optional common (selected by keyword) ──────────────────────────────
     TechAgentTemplate {
         filename: "htmx-expert.md",

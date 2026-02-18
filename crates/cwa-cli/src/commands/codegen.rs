@@ -234,15 +234,25 @@ async fn cmd_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dr
         }
     }
 
-    // Skills
+    // Default skills (always generated)
+    let default_skills = cwa_codegen::generate_default_skills();
+    if dry_run {
+        println!("  {} default skills: {}", default_skills.len(), default_skills.iter().map(|s| s.dirname.as_str()).collect::<Vec<_>>().join(", "));
+    } else {
+        let output_dir = project_dir.join(".claude/skills");
+        let written = cwa_codegen::write_skills(&default_skills, &output_dir)?;
+        println!("  {} {} default skills", "✓".green(), written.len());
+    }
+
+    // Spec-driven skills (active/accepted specs)
     let skills = cwa_codegen::generate_all_skills(pool, project_id).await?;
     if !skills.is_empty() {
         if dry_run {
-            println!("  {} skills: {}", skills.len(), skills.iter().map(|s| s.dirname.as_str()).collect::<Vec<_>>().join(", "));
+            println!("  {} spec skills: {}", skills.len(), skills.iter().map(|s| s.dirname.as_str()).collect::<Vec<_>>().join(", "));
         } else {
             let output_dir = project_dir.join(".claude/skills");
             let written = cwa_codegen::write_skills(&skills, &output_dir)?;
-            println!("  {} {} skills", "✓".green(), written.len());
+            println!("  {} {} spec skills", "✓".green(), written.len());
         }
     }
 

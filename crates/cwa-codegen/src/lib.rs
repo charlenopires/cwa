@@ -20,5 +20,5 @@ pub use commands::{GeneratedCommand, generate_all_commands, write_commands};
 pub use design_system::{GeneratedDesignSystem, generate_design_system_md, write_design_system_md};
 pub use hooks::{GeneratedHooks, generate_hooks, write_hooks};
 pub use mcp_config::{generate_mcp_config, write_mcp_config};
-pub use skills::{GeneratedSkill, generate_skill, generate_all_skills, write_skills};
+pub use skills::{GeneratedSkill, generate_skill, generate_all_skills, generate_default_skills, write_skills};
 pub use tech_agents::{TechAgent, TechAgentTemplate, select_agents_for_stack, write_tech_agents};

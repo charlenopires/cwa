@@ -153,6 +153,188 @@ Get and start working on the next available task.
     }
 }
 
+/// Generate the /spec-review command.
+fn spec_review_command() -> GeneratedCommand {
+    let content = r#"# /spec-review
+
+Review a specification for SDD completeness and quality.
+
+## Usage
+
+```
+/spec-review <spec-id>
+```
+
+## Steps
+
+1. Call `cwa_get_spec` with the provided spec ID
+2. Call `cwa_validate_spec` to run automated validation
+3. Review each acceptance criterion against quality rules:
+   - Is it testable (can you write an automated test)?
+   - Is it specific (no vague terms like "fast" or "good")?
+   - Does it use Given-When-Then or "Should" format?
+4. Check that the spec is linked to a bounded context
+5. Report:
+   - **Status**: READY / NEEDS WORK
+   - **Issues found**: List each gap with a concrete suggestion
+   - **Suggested criteria**: Draft any missing acceptance criteria
+6. If spec is ready, suggest moving it to `active` status
+
+## Example
+
+```
+/spec-review abc-123
+```
+
+This will review spec abc-123 and provide a quality assessment.
+"#;
+
+    GeneratedCommand {
+        filename: "spec-review.md".to_string(),
+        content: content.to_string(),
+        name: "spec-review".to_string(),
+    }
+}
+
+/// Generate the /domain-model command.
+fn domain_model_command() -> GeneratedCommand {
+    let content = r#"# /domain-model
+
+Display the complete domain model for the current project.
+
+## Usage
+
+```
+/domain-model
+```
+
+## Steps
+
+1. Call `cwa_get_domain_model` to get the full domain model
+2. Display a structured overview:
+   - **Bounded Contexts**: Name, description, responsibilities
+   - **Domain Objects per context**: Entities, aggregates, value objects, services, events
+   - **Context Map**: Relationships between contexts (partnership, ACL, conformist, etc.)
+   - **Glossary**: Key ubiquitous language terms
+3. Identify and highlight:
+   - Core domain (highest business value)
+   - Supporting subdomains
+   - Generic subdomains (candidates for off-the-shelf solutions)
+4. Suggest improvements if gaps are detected
+
+## Tips
+
+- Run after `cwa domain context new` to verify the model is correct
+- Use to onboard new contributors to the domain model
+- Reference when creating new specs to ensure correct context association
+"#;
+
+    GeneratedCommand {
+        filename: "domain-model.md".to_string(),
+        content: content.to_string(),
+        name: "domain-model".to_string(),
+    }
+}
+
+/// Generate the /observe command.
+fn observe_command() -> GeneratedCommand {
+    let content = r#"# /observe
+
+Record a development observation, decision, or insight into CWA memory.
+
+## Usage
+
+```
+/observe
+```
+
+## Steps
+
+1. Ask the user what they want to record (or summarize the current session)
+2. Classify the observation:
+   - **discovery**: Something unexpected found during development
+   - **decision**: An architectural or design choice made
+   - **issue**: A problem identified that needs tracking
+   - **improvement**: A pattern or approach that worked well
+3. Call `cwa_observe` with:
+   - `title`: One-line summary (imperative: "Discovered X causes Y")
+   - `narrative`: 2-3 sentences with context and implications
+   - `type`: One of the types above
+   - `confidence`: 0.0 to 1.0 (how certain are you?)
+4. Confirm the observation was recorded
+
+## Examples
+
+```
+# Record a discovery
+/observe
+> Discovered that Redis SCAN is O(N) — use KEYS patterns sparingly on large datasets
+
+# Record an architectural decision
+/observe
+> Decided to use Qdrant for vector search instead of pgvector due to better filtering
+```
+
+## When to Use
+
+- After finding an unexpected bug or behavior
+- After making a significant design decision
+- Before ending a session (capture what you learned)
+- After a code review reveals important patterns
+"#;
+
+    GeneratedCommand {
+        filename: "observe.md".to_string(),
+        content: content.to_string(),
+        name: "observe".to_string(),
+    }
+}
+
+/// Generate the /tech-stack command.
+fn tech_stack_command() -> GeneratedCommand {
+    let content = r#"# /tech-stack
+
+View and understand the project's technology stack and which agents are available.
+
+## Usage
+
+```
+/tech-stack
+```
+
+## Steps
+
+1. Call `cwa_get_tech_stack` to retrieve the current tech stack
+2. Display the tech stack with categorization:
+   - **Languages**: Rust, Python, TypeScript, Elixir, etc.
+   - **Frameworks**: Axum, Phoenix, FastAPI, React, etc.
+   - **Databases**: PostgreSQL, Redis, Neo4j, Qdrant, etc.
+   - **Infrastructure**: Docker, Kubernetes, etc.
+3. List which tech-stack agents are available in `.claude/agents/` for this stack
+4. Suggest running `cwa codegen all` if stack was recently updated to regenerate agents
+
+## Updating the Tech Stack
+
+To update the tech stack, use the `cwa update` CLI command:
+
+```bash
+cwa update
+# Follow prompts to update tech_stack field
+```
+
+Then regenerate agents:
+```bash
+cwa codegen all
+```
+"#;
+
+    GeneratedCommand {
+        filename: "tech-stack.md".to_string(),
+        content: content.to_string(),
+        name: "tech-stack".to_string(),
+    }
+}
+
 /// Generate all built-in commands.
 pub fn generate_all_commands() -> Vec<GeneratedCommand> {
     vec![
@@ -160,6 +342,11 @@ pub fn generate_all_commands() -> Vec<GeneratedCommand> {
         run_backlog_command(),
         project_status_command(),
         next_task_command(),
+        // Phase 9: New commands
+        spec_review_command(),
+        domain_model_command(),
+        observe_command(),
+        tech_stack_command(),
     ]
 }
 
