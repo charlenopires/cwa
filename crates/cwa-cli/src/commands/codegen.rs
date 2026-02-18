@@ -5,6 +5,19 @@ use clap::Subcommand;
 use colored::Colorize;
 use std::path::Path;
 
+/// Read tech stack from .cwa/stack.json if it exists.
+fn read_stack_json(project_dir: &Path) -> Option<Vec<String>> {
+    let path = project_dir.join(".cwa/stack.json");
+    let content = std::fs::read_to_string(&path).ok()?;
+    let val: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let stack = val["tech_stack"]
+        .as_array()?
+        .iter()
+        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+        .collect::<Vec<_>>();
+    if stack.is_empty() { None } else { Some(stack) }
+}
+
 #[derive(Subcommand)]
 pub enum CodegenCommands {
     /// Generate a subagent for a bounded context
@@ -76,7 +89,12 @@ pub async fn execute(cmd: CodegenCommands, project_dir: &Path) -> Result<()> {
             cmd_skill(&pool, &project.id, &spec_id, project_dir, dry_run).await
         }
         CodegenCommands::Hooks { dry_run } => {
-            cmd_hooks(&pool, &project.id, project_dir, dry_run).await
+            let tech_stack = if let Some(stack) = read_stack_json(project_dir) {
+                stack
+            } else {
+                cwa_db::queries::projects::get_tech_stack(&pool, &project.id).await.unwrap_or_default()
+            };
+            cmd_hooks(&pool, &project.id, &tech_stack, project_dir, dry_run).await
         }
         CodegenCommands::Commands { dry_run } => {
             cmd_commands(project_dir, dry_run)
@@ -147,8 +165,8 @@ async fn cmd_skill(pool: &cwa_db::DbPool, project_id: &str, spec_id: &str, proje
     Ok(())
 }
 
-async fn cmd_hooks(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
-    let hooks = cwa_codegen::generate_hooks(pool, project_id).await?;
+async fn cmd_hooks(pool: &cwa_db::DbPool, project_id: &str, tech_stack: &[String], project_dir: &Path, dry_run: bool) -> Result<()> {
+    let hooks = cwa_codegen::generate_hooks(pool, project_id, tech_stack).await?;
 
     if dry_run {
         println!("{} Would generate hooks.json ({} hooks)", "→".dimmed(), hooks.hook_count);
@@ -206,8 +224,12 @@ async fn cmd_claude_md(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Pa
 async fn cmd_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
     println!("{}", "Generating all artifacts...".bold());
 
-    // Tech-stack-aware agents
-    let tech_stack = cwa_db::queries::projects::get_tech_stack(pool, project_id).await.unwrap_or_default();
+    // Tech-stack-aware agents — .cwa/stack.json takes priority over Redis
+    let tech_stack = if let Some(stack) = read_stack_json(project_dir) {
+        stack
+    } else {
+        cwa_db::queries::projects::get_tech_stack(pool, project_id).await.unwrap_or_default()
+    };
     let tech_agents = cwa_codegen::select_agents_for_stack(&tech_stack);
     if dry_run {
         println!(
@@ -267,7 +289,7 @@ async fn cmd_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dr
     }
 
     // Hooks
-    let hooks = cwa_codegen::generate_hooks(pool, project_id).await?;
+    let hooks = cwa_codegen::generate_hooks(pool, project_id, &tech_stack).await?;
     if hooks.hook_count > 0 {
         if dry_run {
             println!("  {} hooks", hooks.hook_count);

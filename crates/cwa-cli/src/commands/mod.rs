@@ -39,6 +39,7 @@ pub mod memory;
 pub mod mcp;
 pub mod serve;
 pub mod spec;
+pub mod stack;
 pub mod task;
 pub mod tokens;
 pub mod update;
@@ -121,6 +122,10 @@ pub enum Commands {
     #[command(subcommand)]
     Git(git::GitCommands),
 
+    /// Tech stack configuration (.cwa/stack.json)
+    #[command(subcommand)]
+    Stack(stack::StackCommands),
+
     /// Clean project (remove .cwa, .claude, CLAUDE.md, .mcp.json)
     Clean(clean::CleanArgs),
 
@@ -157,6 +162,7 @@ impl Cli {
             Commands::Tokens(cmd) => tokens::execute(cmd, &project_dir).await,
             Commands::Infra(cmd) => infra::execute(cmd, &project_dir).await,
             Commands::Git(cmd) => git::execute(cmd).await,
+            Commands::Stack(cmd) => stack::execute(cmd, &project_dir).await,
             Commands::Clean(args) => clean::execute(args, &project_dir).await,
             Commands::Update(args) => update::execute(args, &project_dir).await,
         }
