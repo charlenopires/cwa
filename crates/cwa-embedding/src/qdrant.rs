@@ -31,6 +31,9 @@ pub const OBSERVATIONS_COLLECTION: &str = "cwa_observations";
 /// Collection name for domain objects.
 pub const DOMAIN_OBJECTS_COLLECTION: &str = "cwa_domain_objects";
 
+/// Collection name for file embeddings (linked to observations).
+pub const FILES_COLLECTION: &str = "cwa_files";
+
 /// A search result from Qdrant.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VectorSearchResult {
@@ -94,7 +97,19 @@ impl QdrantStore {
         self.ensure_collection(TERMS_COLLECTION).await?;
         self.ensure_collection(OBSERVATIONS_COLLECTION).await?;
         self.ensure_collection(DOMAIN_OBJECTS_COLLECTION).await?;
+        self.ensure_collection(FILES_COLLECTION).await?;
         Ok(())
+    }
+
+    /// List of all known CWA collection names.
+    pub fn all_collections() -> &'static [&'static str] {
+        &[
+            MEMORIES_COLLECTION,
+            TERMS_COLLECTION,
+            OBSERVATIONS_COLLECTION,
+            DOMAIN_OBJECTS_COLLECTION,
+            FILES_COLLECTION,
+        ]
     }
 
     /// Upsert a vector with payload into a collection.
