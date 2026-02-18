@@ -217,8 +217,22 @@ async fn regenerate_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &P
     cwa_codegen::write_commands(&commands, &output_dir)?;
     println!("  {} {} commands", "✓".green(), commands.len());
 
-    // 5. Hooks
-    let hooks = cwa_codegen::generate_hooks(pool, project_id).await?;
+    // 5. Hooks — read tech stack from .cwa/stack.json or fall back to Redis
+    let tech_stack = {
+        let path = project_dir.join(".cwa/stack.json");
+        let from_file = std::fs::read_to_string(&path).ok()
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+            .and_then(|v| v["tech_stack"].as_array().map(|arr| {
+                arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect::<Vec<_>>()
+            }))
+            .filter(|v| !v.is_empty());
+        if let Some(stack) = from_file {
+            stack
+        } else {
+            cwa_db::queries::projects::get_tech_stack(pool, project_id).await.unwrap_or_default()
+        }
+    };
+    let hooks = cwa_codegen::generate_hooks(pool, project_id, &tech_stack).await?;
     cwa_codegen::write_hooks(&hooks, project_dir)?;
     println!("  {} hooks.json", "✓".green());
 
