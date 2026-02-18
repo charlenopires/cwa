@@ -1,4 +1,4 @@
-# CWA - Claude Workflow Architect
+# CWA v0.9.0 — Claude Workflow Architect
 
 A Rust CLI tool for development workflow orchestration integrated with Claude Code. CWA bridges the gap between project management, domain modeling, and AI-assisted development by providing structured context that Claude Code can leverage through MCP.
 
@@ -10,11 +10,12 @@ A Rust CLI tool for development workflow orchestration integrated with Claude Co
 - **Knowledge Graph** - Neo4j-backed entity relationships, impact analysis, and exploration
 - **Semantic Memory** - Vector embeddings via Ollama + Qdrant for intelligent context recall
 - **Git Integration with Local LLM** - Generate commit messages using Ollama (qwen2.5-coder), saving Claude tokens
-- **Design System Extraction** - Analyze UI screenshots via Claude Vision API to generate design tokens (colors, typography, spacing, components)
-- **Code Generation** - Generate Claude Code agents, skills, hooks, and CLAUDE.md from your domain model
+- **Design System Extraction** - Analyze UI screenshots via Claude Vision API to generate design tokens
+- **Tech Stack Agents** - 28 expert agent templates selected automatically from your `.cwa/stack.json`
+- **Code Generation** - Generate Claude Code agents, skills, hooks, commands, and CLAUDE.md from your domain model
 - **Token Analysis** - Count tokens, estimate costs, and optimize context budget
-- **MCP Server** - Full Model Context Protocol integration with Claude Code
-- **Web Dashboard** - HTMX + Askama Kanban board with drag-and-drop and real-time WebSocket updates
+- **MCP Server** - Full Model Context Protocol integration with 39 tools and 12 resources
+- **Web Dashboard** - HTMX + Askama Kanban board with drag-and-drop and real-time WebSocket auto-refresh
 
 ## Why CWA?
 
@@ -53,16 +54,17 @@ Without CWA, you repeat context in every prompt. With CWA, you describe your ide
                                     │
                          ┌──────────┼──────────┐
                          ▼          ▼          ▼
-                      SQLite     Neo4j     Qdrant
-                     (source    (graph    (vector
-                     of truth)  queries)  search)
+                       Redis      Neo4j     Qdrant
+                     (primary    (graph    (vector
+                     store +     queries)  search)
+                     pub/sub)
                                     │
                                     ▼
                          CLAUDE.md + .claude/
                         (persistent context)
 ```
 
-**You describe, Claude orchestrates**: your project idea enters as a natural language prompt. Claude Code uses MCP tools to create specs, model the domain, generate tasks, and produce artifacts. CWA stores everything in SQLite, syncs relationships to Neo4j, and indexes semantics in Qdrant. All context persists across sessions.
+**You describe, Claude orchestrates**: your project idea enters as a natural language prompt. Claude Code uses MCP tools to create specs, model the domain, generate tasks, and produce artifacts. CWA stores everything in Redis, syncs relationships to Neo4j, and indexes semantics in Qdrant. All context persists across sessions.
 
 ## Installation
 
@@ -88,77 +90,71 @@ cp target/release/cwa /usr/local/bin/
 ### Prerequisites
 
 - **Rust 1.83+** (2021 edition)
-- **Docker** (optional - required for Knowledge Graph, Embeddings, and Semantic Memory features)
-- **ANTHROPIC_API_KEY** (optional - required for `cwa design from-image` command)
+- **Redis** (required — included in Docker Compose via `cwa infra up`)
+- **Docker** (optional — required for Redis, Knowledge Graph, Embeddings, and Semantic Memory features)
+- **ANTHROPIC_API_KEY** (optional — required for `cwa design from-image` command)
 
 ## Technology Choices
 
+### Why Redis as Primary Store?
+
+CWA v0.8.0 migrated from SQLite to Redis as the primary data store. The rationale:
+
+- **Async-native** - Redis operations are non-blocking, matching Tokio's async runtime perfectly
+- **Pub/Sub for WebSocket** - `PUBLISH`/`SUBSCRIBE` enables real-time board refresh when Claude Code updates tasks via MCP
+- **Sorted sets for ordering** - Tasks, specs, and observations maintain insertion order using `ZADD`
+- **Zero separate DB process** - Redis runs in Docker Compose alongside Neo4j and Qdrant; no SQLite file to manage
+- **Key schema** - All data lives under `cwa:<project_id>:` prefix, making projects self-contained and portable
+
+**Key schema:**
+```
+cwa:<project_id>:project      — Project metadata (HASH)
+cwa:<project_id>:specs:all    — Spec ID set (ZSET ordered by time)
+cwa:<project_id>:spec:<id>    — Spec data (HASH)
+cwa:<project_id>:tasks:all    — Task ID set (ZSET ordered by time)
+cwa:<project_id>:task:<id>    — Task data (HASH)
+cwa:<project_id>:contexts:all — Context set (SET)
+cwa:<project_id>:context:<id> — Context data (HASH)
+```
+
+Neo4j and Qdrant are **derived stores** — they're populated by syncing from Redis and can be rebuilt at any time.
+
 ### Why Ollama for Embeddings?
 
-CWA uses [Ollama](https://ollama.ai) with the `nomic-embed-text` model (768 dimensions) for semantic embeddings. The rationale:
+CWA uses [Ollama](https://ollama.ai) with the `nomic-embed-text` model (768 dimensions) for semantic embeddings:
 
 - **Local-first** - Runs entirely on your machine, no API keys, no network latency for embeddings
 - **Privacy** - Your project knowledge never leaves your infrastructure
 - **Offline capable** - Works without internet after initial model pull
 - **Cost** - Zero marginal cost per embedding, unlike cloud APIs
-- **nomic-embed-text** - Small (274MB), fast, and scores well on retrieval benchmarks for its size
-
-For teams needing cloud embeddings, the architecture allows swapping Ollama for OpenAI/Anthropic embedding APIs through the `cwa-embedding` crate.
 
 ### Why Local LLM for Git Commits?
 
-CWA uses `qwen2.5-coder:3b` via Ollama for generating commit messages instead of Claude:
+CWA uses `qwen2.5-coder:3b` via Ollama for generating commit messages:
 
 - **Token savings** - Routine commits don't consume your Claude token budget
 - **Speed** - Local inference is faster than API round-trips for simple tasks
 - **Offline** - Works without internet after initial model pull
-- **qwen2.5-coder** - Specifically trained on code, understands git diffs well
-- **Flexible** - Switch models via `--model` flag or `OLLAMA_GEN_MODEL` env var
-
-The slash commands `/cwa-commit` and `/cwa-commitpush` let you use this feature directly from Claude Code, keeping Claude's context for complex tasks while offloading routine commits to the local model.
 
 ### Why Qdrant for Vector Storage?
 
-[Qdrant](https://qdrant.tech) is a purpose-built vector database chosen over alternatives (Pinecone, Weaviate, pgvector):
-
-- **Native vector operations** - Built from the ground up for similarity search, not bolted onto a relational DB
+- **Native vector operations** - Built from the ground up for similarity search
 - **gRPC interface** - Fast binary protocol for high-throughput embedding operations
 - **Filtering** - Supports payload filtering during search (e.g., search only "decision" type memories)
 - **Self-hosted** - Runs locally via Docker, no cloud dependency
-- **Low resource** - Minimal memory footprint for the scale of project knowledge (hundreds to low thousands of vectors)
 
 ### Why Neo4j for Knowledge Graph?
-
-[Neo4j](https://neo4j.com) enables relationship queries that are impractical in relational databases:
 
 - **Impact analysis** - "What tasks, specs, and decisions are affected if I change this bounded context?" is a single graph traversal
 - **Cypher** - Expressive query language makes complex relationship queries readable
 - **Path finding** - Discover indirect dependencies between entities
 - **Visualization** - Neo4j Browser provides visual graph exploration at `http://localhost:7474`
-- **APOC plugins** - Extended algorithms for community detection, centrality, and pattern matching
-
-### Why SQLite as Source of Truth?
-
-- **Zero configuration** - No server to install or manage
-- **Single file** - `.cwa/cwa.db` is portable and easy to back up
-- **Fast** - Local file I/O is faster than network calls for CLI interactions
-- **Reliable** - ACID transactions, well-tested, used by billions of devices
-- **Schema migrations** - Numbered SQL migrations managed by `cwa-db`
-
-Neo4j and Qdrant are **derived stores** - they're populated by syncing from SQLite and can be rebuilt at any time.
 
 ### Why Askama for Web Templates?
 
 - **Compile-time** - Templates are checked at build time, no runtime template parsing errors
 - **Type-safe** - Template variables are Rust structs, impossible to pass wrong types
 - **Zero overhead** - Compiled directly into the binary, no file I/O at runtime
-- **Familiar syntax** - Jinja2-like syntax for developers coming from Python/JS ecosystems
-
-### Why tiktoken-rs for Token Counting?
-
-- **Accurate** - Uses the same tokenizer (cl100k_base) as Claude and GPT models
-- **Fast** - Native Rust implementation, counts thousands of tokens in microseconds
-- **Budget management** - Critical for keeping CLAUDE.md and context files within model limits
 
 ## Getting Started
 
@@ -173,22 +169,41 @@ This creates:
 - `.mcp.json` — MCP server configuration (auto-detected by Claude Code)
 - `.claude/` — Agents, skills, commands, rules, and hooks
 - `CLAUDE.md` — Project context file
-- `.cwa/cwa.db` — SQLite database
-- `.cwa/docker/` — Docker Compose infrastructure (Neo4j, Qdrant, Ollama)
+- `.cwa/` — Project directory (config, scripts, docker)
 
-### 2. Open in Claude Code
+### 2. Start Infrastructure
 
-Open the project directory in Claude Code. The `.mcp.json` file is detected automatically, connecting the CWA MCP server with 34 tools and 11 resources.
+Redis is required. Start all services with:
 
-### 3. Describe Your Project
+```bash
+cwa infra up
+```
+
+This starts Redis, Neo4j, Qdrant, and Ollama via Docker Compose.
+
+### 3. Set Tech Stack
+
+Configure your tech stack so `cwa codegen all` selects the right expert agents:
+
+```bash
+cwa stack set rust axum redis neo4j qdrant
+```
+
+This writes `.cwa/stack.json` and enables automatic tech-stack-aware agent selection.
+
+### 4. Open in Claude Code
+
+Open the project directory in Claude Code. The `.mcp.json` file is detected automatically, connecting the CWA MCP server with **39 tools** and **12 resources**.
+
+### 5. Describe Your Project
 
 Tell Claude Code what you want to build:
 
 > "I want to build a recipe sharing app where users can create accounts,
 > save recipes with ingredients and steps, search by ingredient, and
-> leave ratings. Use Rust with Axum for the backend and SQLite for storage."
+> leave ratings. Use Rust with Axum for the backend and Redis for storage."
 
-### 4. Claude Code Does the Rest
+### 6. Claude Code Does the Rest
 
 Through MCP tools, Claude Code automatically:
 
@@ -205,52 +220,8 @@ You can verify the result:
 cwa task board          # See populated Kanban board
 cwa spec list           # See specifications with criteria
 cwa domain context list # See bounded contexts
+cwa stack show          # See tech agent templates
 ```
-
-### 5. Start Building
-
-In the same or a future Claude Code session, say:
-
-> "What should I work on next?"
-
-Claude Code reads the project state via MCP, picks a task respecting WIP limits, loads the relevant spec, and begins implementation with TDD.
-
-### With Knowledge Graph & Semantic Memory (Optional)
-
-```bash
-# Start Docker infrastructure for graph and embedding features
-cwa infra up
-
-# Check services are healthy
-cwa infra status
-
-# Sync to Knowledge Graph
-cwa graph sync
-
-# Semantic search
-cwa memory search "authentication tokens"
-```
-
-## Two Approaches
-
-CWA supports two complementary workflows:
-
-### Prompt-First (Recommended)
-
-Describe what you want in natural language. Claude Code uses MCP tools to run the correct CWA commands in the right order. Best for:
-- Starting new projects
-- Adding features
-- Day-to-day development
-
-### CLI-Direct
-
-Run `cwa` commands manually for full control. Best for:
-- Fine-tuning specs or tasks
-- CI/CD scripts
-- Debugging project state
-- Learning what CWA does under the hood
-
-All CLI commands are documented in the [CLI Reference](#cli-reference) section below.
 
 ## CLI Reference
 
@@ -266,46 +237,36 @@ cwa context summary                         # View context summary
 cwa clean [--confirm] [--infra]             # Clean project (start fresh)
 ```
 
+### Tech Stack Configuration
+
+```bash
+cwa stack set <tech> [<tech2>...]          # Set tech stack (writes .cwa/stack.json)
+cwa stack show                              # Show current stack + available agent templates
+```
+
 **Example:**
 ```bash
-$ cwa init my-saas
-✓ Project 'my-saas' initialized
-  Database: .cwa/cwa.db
-  Config: .mcp.json
+$ cwa stack set rust axum redis neo4j qdrant
+✓ Tech stack saved to .cwa/stack.json
+  Stack: rust, axum, redis, neo4j, qdrant
 
-$ cwa context status
-Project: my-saas
-  Specs: 3 (1 active, 2 draft)
-  Tasks: 5 (1 in_progress, 2 todo, 2 backlog)
-  Contexts: 2
+Run 'cwa codegen all' to regenerate agents for this stack.
 
-$ cwa update
-→ Updating project: my-saas
+$ cwa stack show
+Tech Stack
+────────────────────────────────────────
+  • rust
+  • axum
+  • redis
+  • neo4j
+  • qdrant
 
-Project name [my-saas]: My SaaS Platform
-Description []: A subscription billing platform for startups
-Tech stack (comma-separated): Rust, Axum, SQLite, HTMX
-
-Main features (enter each on a line, empty line to finish):
-Feature #1: User management and teams
-Feature #2: Subscription plans (free, pro, enterprise)
-Feature #3: Stripe payment integration
-Feature #4:
-
-Constraints/Guidelines (enter each on a line, empty line to finish):
-Constraint #1: Must support multi-tenancy
-Constraint #2: GDPR compliant data handling
-Constraint #3:
-
-✓ Project info saved
-→ Regenerating context files...
-  ✓ CLAUDE.md
-  ✓ 3 agents
-  ✓ 2 skills
-  ✓ 4 commands
-  ✓ hooks.json
-
-✓ Project updated successfully!
+→ 5 agent templates would be generated:
+  .claude/agents/rust-expert.md
+  .claude/agents/axum-expert.md
+  .claude/agents/tokio-expert.md
+  .claude/agents/redis-expert.md
+  .claude/agents/neo4j-expert.md
 ```
 
 ### Specifications (SDD)
@@ -322,7 +283,7 @@ cwa spec archive <spec-id>
 cwa spec clear [--confirm]
 ```
 
-**Example: Creating a spec with acceptance criteria:**
+**Example:**
 ```bash
 $ cwa spec new "User Authentication" --description "JWT-based auth" --priority high \
   -c "User can register with email and password" \
@@ -330,60 +291,6 @@ $ cwa spec new "User Authentication" --description "JWT-based auth" --priority h
   -c "Session expires after 24 hours"
 ✓ Created spec: User Authentication (abc123)
   3 acceptance criteria added
-```
-
-**Example: Adding criteria to an existing spec:**
-```bash
-$ cwa spec add-criteria abc123 "User can reset password" "User can enable 2FA"
-✓ Added 2 criteria to spec 'User Authentication' (total: 5)
-```
-
-**Example: Creating multiple specs from a long prompt:**
-```bash
-# From inline text (numbered list)
-$ cwa spec from-prompt "1. User registration with email validation
-2. OAuth2 integration with Google and GitHub
-3. Password reset via email
-4. Session management with refresh tokens"
-✓ Created 4 spec(s):
-
-  1. User registration with email validation (a1b2c3)
-  2. OAuth2 integration with Google and GitHub (d4e5f6)
-  3. Password reset via email (g7h8i9)
-  4. Session management with refresh tokens (j0k1l2)
-
-# From a file
-$ cwa spec from-prompt --file features.md --priority high
-
-# Preview without creating
-$ cwa spec from-prompt --dry-run "- Feature A\n- Feature B\n- Feature C"
-
-# From stdin (pipe)
-$ cat requirements.txt | cwa spec from-prompt
-```
-
-**Supported formats for `from-prompt`:**
-- Numbered lists: `1. Item`, `2. Item`
-- Bullet points: `- Item` or `* Item`
-- Markdown headings: `# Title` with body text
-- Paragraphs separated by blank lines
-
-```bash
-$ cwa spec list
-ID       Title                  Status   Priority
-abc123   User Authentication    draft    high
-def456   Payment Processing     active   medium
-```
-
-**Example: Clearing all specs:**
-```bash
-# Preview (requires confirmation)
-$ cwa spec clear
-! This will permanently delete 2 spec(s). Run with --confirm to confirm.
-
-# Execute
-$ cwa spec clear --confirm
-✓ Cleared 2 spec(s).
 ```
 
 ### Tasks (Kanban)
@@ -418,53 +325,6 @@ $ cwa task wip
   review:      0/2
 ```
 
-**Example: Generating tasks from spec criteria:**
-```bash
-# Preview what would be generated
-$ cwa task generate abc123 --dry-run
-⊙ Would create 3 task(s) for spec 'User Authentication':
-
-  1. User can register with email and password [high]
-  2. User can login with valid credentials [high]
-  3. Session expires after 24 hours [high]
-
-# Generate the tasks
-$ cwa task generate abc123
-✓ Generated 3 task(s) for spec 'User Authentication':
-
-  1. User can register with email and password (task-001)
-  2. User can login with valid credentials (task-002)
-  3. Session expires after 24 hours (task-003)
-
-# Running again skips existing tasks
-$ cwa task generate abc123
-⊙ All 3 criteria already have tasks. Nothing to generate.
-
-# With a title prefix
-$ cwa task generate abc123 --prefix "Auth"
-✓ Generated 3 task(s) for spec 'User Authentication':
-
-  1. Auth: User can register with email and password (task-004)
-  ...
-```
-
-**Example: Clearing tasks:**
-```bash
-# Clear all tasks
-$ cwa task clear
-! This will permanently delete 5 task(s). Run with --confirm to confirm.
-
-$ cwa task clear --confirm
-✓ Cleared 5 task(s).
-
-# Clear tasks for a specific spec
-$ cwa task clear abc123
-! This will permanently delete 3 task(s) for spec 'User Authentication'. Run with --confirm to confirm.
-
-$ cwa task clear abc123 --confirm
-✓ Cleared 3 task(s) for spec 'User Authentication'.
-```
-
 ### Domain Modeling (DDD)
 
 ```bash
@@ -475,156 +335,38 @@ cwa domain context map                 # Show context relationships
 cwa domain glossary                    # Display domain glossary
 ```
 
-**Example:**
-```bash
-$ cwa domain context new "Authentication" --description "User identity and access"
-✓ Context created: auth-ctx-001
-
-$ cwa domain context list
-ID            Name             Description
-auth-ctx-001  Authentication   User identity and access
-pay-ctx-002   Payments         Payment processing and billing
-
-$ cwa domain glossary
-Term          Definition
-JWT           JSON Web Token for stateless auth
-Aggregate     Cluster of domain objects with consistency boundary
-```
-
 ### Memory (Semantic)
 
 ```bash
 cwa memory add "<content>" -t <type>        # preference|decision|fact|pattern
 cwa memory search "<query>" [--top-k N]     # Semantic search (default: 5 results)
-cwa memory search "<query>" --legacy        # Text-based search (no embeddings)
-cwa memory import                           # Import legacy entries with embeddings
+cwa memory observe "<title>" -t <type>      # Record structured observation
+cwa memory timeline [--days 7] [--limit 20] # Recent observations grouped by day
 cwa memory compact [--min-confidence 0.3]   # Remove low-confidence entries
-cwa memory compact --decay 0.98            # Decay all observation confidences
 cwa memory sync                             # Sync CLAUDE.md with current state
 cwa memory export [--output <file>]         # Export memory as JSON
 ```
 
-### Observations (Structured Memory)
-
-Observations capture structured development activity with confidence lifecycle, progressive disclosure via MCP, and automatic CLAUDE.md injection.
-
-```bash
-# Record observations
-cwa memory observe "<title>" -t <type>      # bugfix|feature|refactor|discovery|decision|change|insight
-cwa memory observe "Fixed auth token refresh" -t bugfix -f "Token expiring before refresh window"
-cwa memory observe "Use Redis for sessions" -t decision -n "Lower latency than DB queries" --files-modified src/session.rs
-
-# View timeline
-cwa memory timeline [--days 7] [--limit 20] # Recent observations grouped by day
-
-# Generate summaries
-cwa memory summarize [--count 10]           # Compress recent observations into summary
-```
-
-**Example:**
-```bash
-$ cwa memory add "Team prefers functional patterns over OOP" --type preference
-✓ Memory added (id: a1b2c3d4, embedding: 768 dims)
-
-$ cwa memory observe "Fixed auth token refresh" -t bugfix -f "Token was expiring before refresh window"
-✓ Observation recorded (id: b2c3d4e5, embedding: 768 dims)
-  • [bugfix] Fixed auth token refresh
-    → Token was expiring before refresh window
-
-$ cwa memory timeline --days 3
-→ Observations (last 3 days):
-
-  2024-01-15
-    [BUGFIX] Fixed auth token refresh 80% (b2c3d4e5)
-    [DECISION] Use Redis for session cache 80% (c3d4e5f6)
-
-$ cwa memory search "coding style"
-✓ Found 2 results:
-
-  1. [preference] Team prefers functional patterns over OOP (92%)
-  2. [fact] Codebase uses Rust with trait-based composition (78%)
-
-$ cwa memory compact --decay 0.98 --min-confidence 0.3
-✓ Decayed 15 observation confidences by factor 0.98
-✓ Removed 2 low-confidence observations
-✓ Removed 5 low-confidence memories
-```
-
 ### Knowledge Graph
 
-Requires Docker infrastructure (`cwa infra up`).
-
 ```bash
-cwa graph sync                                    # Full sync SQLite -> Neo4j
+cwa graph sync                                    # Full sync Redis -> Neo4j
 cwa graph query "<cypher>"                        # Execute raw Cypher
 cwa graph impact <entity-type> <entity-id>        # Impact analysis
-cwa graph explore <entity-type> <entity-id> [--depth N]  # Neighborhood
+cwa graph explore <entity-type> <entity-id>       # Neighborhood exploration
 cwa graph status                                  # Graph statistics
 ```
 
-**Entity types:** `spec`, `task`, `context`, `decision`
-
-**Example:**
-```bash
-$ cwa graph sync
-Syncing to Knowledge Graph...
-✓ Sync complete:
-  Nodes created/updated: 15
-  Relationships created: 23
-
-$ cwa graph impact spec abc123
-Impact analysis for spec abc123
-──────────────────────────────────────────────
-  -> [Task] Implement login endpoint (IMPLEMENTS)
-  -> [Task] Add JWT validation (IMPLEMENTS)
-  -> [BoundedContext] Authentication (BELONGS_TO)
-  -> [Decision] Use RS256 algorithm (RELATES_TO)
-
-4 related entities found.
-```
-
-### Design System
-
-Extract a complete design system from a UI screenshot using Claude Vision API. The extracted tokens are stored in memory, synced to the knowledge graph, and written to `.claude/design-system.md` for reference by Claude Code agents.
-
-```bash
-cwa design from-image <url>              # Extract design system from screenshot
-    --model <model>                       # Claude model (default: claude-sonnet-4-20250514)
-    --dry-run                             # Preview without saving
-```
-
-**Requires:** `ANTHROPIC_API_KEY` environment variable.
-
-**Example:**
-```bash
-$ cwa design from-image https://example.com/app-screenshot.png
-→ Analyzing image: https://example.com/app-screenshot.png
-✓ Stored design system (id: a1b2c3d4)
-✓ Generated: .claude/design-system.md
-✓ Stored embedding (768 dims)
-✓ Graph synced (1 nodes, 1 relationships)
-
-Design system ready.
-  Reference: .claude/design-system.md
-```
-
-The generated `.claude/design-system.md` includes:
-- CSS custom properties with all design tokens
-- Color palette (primary, secondary, neutral, semantic)
-- Typography scale and font families
-- Spacing, border-radius, and shadow tokens
-- Breakpoints
-- Identified UI components with variants and states
-
 ### Code Generation
 
-Generates Claude Code artifacts from your domain model.
+Generates Claude Code artifacts from your domain model and tech stack.
 
 ```bash
 cwa codegen agent [context-id]     # Agent from bounded context
 cwa codegen agent --all            # All agents
 cwa codegen skill <spec-id>        # Skill from spec
-cwa codegen hooks                  # Validation hooks from invariants
+cwa codegen hooks                  # Validation hooks (all 4 event types)
+cwa codegen commands               # Claude Code slash commands (11)
 cwa codegen claude-md              # Regenerate CLAUDE.md
 cwa codegen all                    # Generate everything
 # All commands support --dry-run
@@ -632,17 +374,17 @@ cwa codegen all                    # Generate everything
 
 **Example:**
 ```bash
+$ cwa stack set rust axum redis
 $ cwa codegen all --dry-run
 Generating all artifacts...
-  2 agents: authentication-expert.md, payments-expert.md
-  1 skills: user-authentication
-  3 hooks
+  3 tech agents (stack: rust, axum, redis): rust-expert.md, axum-expert.md, tokio-expert.md
+  2 domain agents: recipes-expert.md, users-expert.md
+  3 default skills: workflow-kickoff, refactor-safe, tdd-cycle
+  11 commands: generate-tasks, run-backlog, project-status, next-task, spec-review, ...
   CLAUDE.md
+  .mcp.json
 
 (dry run - no files written)
-
-$ cwa codegen all
-✓ All artifacts generated.
 ```
 
 ### Token Analysis
@@ -654,200 +396,51 @@ cwa tokens optimize [--budget N]   # Suggest optimizations (default: 8000)
 cwa tokens report                  # Full report with chart
 ```
 
-**Example:**
-```bash
-$ cwa tokens analyze --all
-Token Analysis (All Context Files)
-────────────────────────────────────────────────────────────
-   2340 (45%) CLAUDE.md
-    890 (17%) .claude/agents/authentication-expert.md
-    650 (12%) .claude/agents/payments-expert.md
-    420 ( 8%) .claude/skills/user-authentication/SKILL.md
-    340 ( 6%) .claude/hooks.json
-────────────────────────────────────────────────────────────
-  5180 total tokens across 5 files
-
-$ cwa tokens optimize --budget 4000
-Suggestions:
-  1. [HIGH] ~400 tokens: Trim verbose descriptions in CLAUDE.md
-  2. [MED]  ~250 tokens: Consolidate similar agent sections
-  3. [LOW]  ~180 tokens: Remove redundant comments
-```
-
 ### Infrastructure (Docker)
 
-Manages Neo4j, Qdrant, and Ollama containers.
+Manages Redis, Neo4j, Qdrant, and Ollama containers.
 
 ```bash
 cwa infra up                       # Start all services + pull models
 cwa infra down                     # Stop services (keep data)
 cwa infra down --clean             # Stop + remove volumes + remove images
-cwa infra status                   # Health check (shows embedding + generation models)
+cwa infra status                   # Health check
 cwa infra logs [service] [--follow]  # View logs
 cwa infra reset --confirm          # Destroy all data + volumes
 
 # Model management
 cwa infra models                   # List installed Ollama models
-cwa infra models pull <model>      # Pull a model (e.g., qwen2.5-coder:7b)
-cwa infra models set <model>       # Set default generation model
+cwa infra models pull <model>      # Pull a model
 ```
 
 ### Git Commands (Local LLM)
 
-Generate commit messages using local Ollama instead of spending Claude tokens.
-
 ```bash
 cwa git msg                        # Generate commit message (preview only)
-cwa git msg --model qwen2.5-coder:7b  # Use specific model
 cwa git commit                     # Generate message and commit
 cwa git commit -a                  # Stage all changes + commit
-cwa git commit -e                  # Edit message before committing
 cwa git commitpush                 # Commit and push
-cwa git commitpush -a              # Stage all + commit + push
-```
-
-**Example:**
-```bash
-$ echo "new feature" >> feature.rs
-$ git add feature.rs
-
-$ cwa git msg
-Generating commit message using qwen2.5-coder:3b...
-
-Generated commit message:
-  feat: add new feature implementation
-
-$ cwa git commit
-Generating commit message using qwen2.5-coder:3b...
-Message: feat: add new feature implementation
-Committed successfully!
-```
-
-**Models available:**
-| Model | Size | Use Case |
-|-------|------|----------|
-| `qwen2.5-coder:3b` | 1.9GB | Default - good balance, runs on CPU |
-| `qwen2.5-coder:1.5b` | 986MB | Lighter, for limited memory |
-| `qwen2.5-coder:7b` | 4.7GB | Better quality, benefits from GPU |
-
-**Configuration:**
-```bash
-# Set default model via environment variable
-export OLLAMA_GEN_MODEL=qwen2.5-coder:7b
-
-# Or use --model flag per command
-cwa git commit --model qwen2.5-coder:7b
-```
-
-### Project Cleanup
-
-```bash
-cwa clean                          # Preview what will be removed
-cwa clean --confirm                # Remove .cwa/, .claude/, CLAUDE.md, .mcp.json
-cwa clean --confirm --infra        # Also remove Docker infrastructure
-```
-
-**Example:**
-```bash
-$ cwa infra up
-Starting CWA infrastructure...
-  neo4j ... healthy
-  qdrant ... healthy
-  ollama ... healthy
-  Pulling nomic-embed-text... done
-
-Infrastructure ready.
-  Neo4j Browser: http://localhost:7474
-  Qdrant API:    http://localhost:6333
-  Ollama API:    http://localhost:11434
-```
-
-### Analysis
-
-```bash
-cwa analyze competitors <domain>   # Analyze competitors in a domain
-cwa analyze features <competitor>  # Analyze features of a competitor
-cwa analyze market <niche>         # Analyze a market segment
 ```
 
 ### Servers
 
 ```bash
-cwa serve [--port <port>] [--host <host>]  # Start web server with live reload
-cwa serve --log                             # Enable logging to terminal and file
-cwa serve --log --log-file <path>           # Custom log file path
+cwa serve [--port <port>] [--host <host>]  # Start web server
 cwa mcp stdio                              # Run standalone MCP server
 cwa mcp planner                            # Run MCP planner server (Claude Desktop)
-cwa mcp status                             # Show MCP configuration examples
+cwa mcp status                             # Show MCP configuration
 cwa mcp install [target]                   # Install MCP server to target(s)
-cwa mcp install --variant planner          # Install planner variant
 cwa mcp uninstall [target]                 # Remove MCP server from target(s)
 ```
 
-**MCP Installation:**
+**MCP Installation targets:**
 
-Easily install CWA as an MCP server to supported applications:
-
-```bash
-# Interactive mode (select targets)
-cwa mcp install
-
-# Install to specific target
-cwa mcp install claude-desktop
-cwa mcp install claude-code
-cwa mcp install gemini-cli
-cwa mcp install vscode
-
-# Install planner variant (includes cwa_plan_software tool)
-cwa mcp install claude-desktop --variant planner
-
-# Install to all supported targets
-cwa mcp install all
-
-# Preview without changes
-cwa mcp install --dry-run
-
-# Uninstall from a target
-cwa mcp uninstall claude-desktop
-```
-
-**Supported targets:**
 | Target | Config Location |
 |--------|-----------------|
 | `claude-desktop` | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | `claude-code` | `~/.claude.json` |
 | `gemini-cli` | `~/.gemini/settings.json` |
-| `antigravity` | `~/.gemini/antigravity/mcp_config.json` |
 | `vscode` | `~/Library/Application Support/Code/User/mcp.json` |
-| `vscode-insiders` | `~/Library/Application Support/Code - Insiders/User/mcp.json` |
-
-**Live Reload Architecture:**
-
-When Claude Code updates tasks via MCP, the web board updates automatically:
-
-```
-Claude Code → cwa mcp stdio → HTTP POST /internal/notify → WebSocket → Browser
-```
-
-- `cwa serve` runs the web server with WebSocket support
-- `cwa mcp stdio` (run by Claude Code) sends HTTP notifications to the web server
-- Web server broadcasts updates to all connected browsers via WebSocket
-- Dashboard automatically refreshes when it receives a WebSocket message
-
-**Usage:**
-```bash
-# Terminal 1: Start web server (default port 3030)
-cwa serve --log
-
-# Open browser: http://127.0.0.1:3030
-# Use Claude Code with MCP - board updates in real-time!
-```
-
-**Custom Port:** Set `CWA_WEB_URL` environment variable:
-```bash
-export CWA_WEB_URL=http://127.0.0.1:8080
-cwa serve --port 8080
-```
 
 ## Claude Code Integration
 
@@ -856,156 +449,6 @@ CWA is designed as a **companion system for Claude Code**, providing persistent 
 1. **MCP Server** - Real-time tools and resources Claude Code calls during sessions
 2. **Generated Artifacts** - `.claude/` directory with agents, skills, commands, rules, and hooks
 3. **CLAUDE.md** - Auto-generated context file loaded at session start
-
-### How Claude Code Uses CWA in Each Phase
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        Development Lifecycle                             │
-├──────────┬──────────┬──────────────┬──────────┬────────────────────────┤
-│ Planning │  Design  │Implementation│  Review  │   Memory & Learning    │
-│          │          │              │          │                        │
-│ Specs    │ Domain   │ Agents       │ Hooks    │ Observations           │
-│ from-    │ Contexts │ Skills       │ Spec     │ Semantic Search        │
-│ prompt   │ Glossary │ Commands     │ Criteria │ Decision Records       │
-│          │ Graph    │ Rules        │ WIP      │ Timeline               │
-│          │          │              │ Limits   │ Summaries              │
-├──────────┴──────────┴──────────────┴──────────┴────────────────────────┤
-│                              ↕ MCP ↕                                    │
-├─────────────────────────────────────────────────────────────────────────┤
-│                    Claude Code Session                                   │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-#### Phase 1: Planning & Specification
-
-Claude Code reads the project state and helps define what to build.
-
-```
-Claude Code                              CWA
-    │                                     │
-    ├── reads project://current-spec ────→│ "What are we building?"
-    ├── reads project://domain-model ────→│ "What's the domain?"
-    ├── calls cwa_get_context_summary ───→│ "What's the current state?"
-    ├── calls cwa_search_memory ─────────→│ "Any past decisions on this?"
-    │                                     │
-    ├── User describes feature ──────────→│
-    ├── calls cwa spec new / from-prompt →│ Creates spec with criteria
-    ├── calls cwa_generate_tasks ────────→│ Auto-creates tasks from criteria
-    └── calls cwa_add_decision ──────────→│ Records "why" for future sessions
-```
-
-**What Claude Code gains**: Full project context without re-explanation. Past decisions, domain model, and current work state are immediately available.
-
-#### Phase 2: Domain Modeling
-
-Claude Code helps discover and refine the domain model, which drives code generation.
-
-```
-Claude Code                              CWA
-    │                                     │
-    ├── calls cwa_get_domain_model ──────→│ Load current contexts
-    ├── creates bounded contexts ────────→│ domain context new
-    ├── defines entities/invariants ─────→│ Stored in SQLite
-    ├── calls cwa_graph_sync ────────────→│ Syncs to Neo4j
-    └── calls cwa_graph_impact ──────────→│ "What does changing this affect?"
-```
-
-**What Claude Code gains**: Bounded contexts become generated expert agents. Invariants become validation hooks. The glossary enforces ubiquitous language.
-
-#### Phase 3: Implementation
-
-Claude Code uses the generated agents, skills, and task context to write code.
-
-```
-Claude Code                              CWA
-    │                                     │
-    ├── /project:next-task ──────────────→│ Picks task, checks WIP limits
-    ├── calls cwa_get_current_task ──────→│ Loads task details
-    ├── calls cwa_get_spec ──────────────→│ Loads acceptance criteria
-    │                                     │
-    │  ┌─ Agents active: ─────────────────┤
-    │  │  implementer.md (TDD flow)       │ Reads spec before coding
-    │  │  tester.md (BDD from criteria)   │ Generates tests first
-    │  │  [context]-expert.md             │ Domain-specific guidance
-    │  └──────────────────────────────────┤
-    │                                     │
-    │  ┌─ Rules enforced: ────────────────┤
-    │  │  workflow.md (spec before code)  │ Prevents skipping phases
-    │  │  domain.md (DDD principles)     │ Ubiquitous language
-    │  │  tests.md (coverage gates)      │ Test requirements
-    │  └──────────────────────────────────┤
-    │                                     │
-    ├── calls cwa_observe ───────────────→│ Records bugfix/feature/discovery
-    ├── calls cwa_update_task_status ────→│ Moves task to review
-    └── calls cwa_memory_add ────────────→│ Stores patterns/decisions
-```
-
-**What Claude Code gains**: Structured workflow enforcement. The implementer agent reads the spec, the tester agent writes tests from acceptance criteria, and the orchestrator ensures WIP limits are respected.
-
-#### Phase 4: Review & Validation
-
-Claude Code validates work against spec criteria and domain invariants.
-
-```
-Claude Code                              CWA
-    │                                     │
-    ├── /project:review-code ────────────→│ Triggers review workflow
-    ├── calls cwa_get_spec ──────────────→│ Loads acceptance criteria
-    │                                     │
-    │  ┌─ Hooks fire: ───────────────────┤
-    │  │  pre-commit: wip check          │ Enforces kanban limits
-    │  │  pre-commit: invariant check    │ Domain rule validation
-    │  │  post-test: task advancement    │ Reminds to move task
-    │  └──────────────────────────────────┤
-    │                                     │
-    ├── reviewer.md validates criteria ──→│ Each criterion checked
-    └── calls cwa_update_task_status ────→│ done (or back to in_progress)
-```
-
-**What Claude Code gains**: Automated validation against acceptance criteria. Hooks prevent bypassing workflow rules. The reviewer agent knows exactly what to check.
-
-#### Phase 5: Memory & Continuous Learning
-
-Claude Code builds persistent project memory that survives across sessions.
-
-```
-Claude Code                              CWA
-    │                                     │
-    ├── calls cwa_observe ───────────────→│ Structured: bugfix/feature/decision/...
-    ├── calls cwa_memory_add ────────────→│ Facts, preferences, patterns
-    ├── calls cwa_add_decision ──────────→│ ADRs with rationale
-    │                                     │
-    │  Next session starts:               │
-    ├── reads CLAUDE.md ─────────────────→│ Recent observations (0.7+ confidence)
-    ├── calls cwa_memory_timeline ───────→│ Compact timeline (~50 tok/entry)
-    ├── calls cwa_memory_get ────────────→│ Full details (~500 tok/entry)
-    └── calls cwa_memory_semantic_search →│ "Why did we choose X?"
-```
-
-**What Claude Code gains**: Progressive disclosure memory. Timeline gives a quick overview; full details are loaded on demand. Confidence decay automatically deprecates stale knowledge. Summaries compress old observations.
-
-#### Phase 6: Context Regeneration
-
-CWA keeps all artifacts in sync and within token budget.
-
-```
-Claude Code                              CWA
-    │                                     │
-    ├── /project:sync-context ───────────→│ Triggers full regeneration
-    │                                     │
-    │  CWA regenerates:                   │
-    │  ├── CLAUDE.md ─────────────────────│ Domain, specs, decisions, work state
-    │  ├── agents/ ───────────────────────│ Expert agent per context
-    │  ├── skills/ ───────────────────────│ Skill per approved spec
-    │  ├── hooks.json ────────────────────│ Invariants as validation hooks
-    │  └── design-system.md ──────────────│ Design tokens from screenshots
-    │                                     │
-    ├── calls cwa tokens optimize ───────→│ Ensures within budget
-    └── calls cwa_graph_sync ────────────→│ Updates knowledge graph
-```
-
-**What Claude Code gains**: All generated artifacts stay current with the domain model. Token optimization ensures context fits within the model window.
 
 ### MCP Configuration
 
@@ -1037,64 +480,13 @@ For project planning before implementation, configure the planner in Claude Desk
 }
 ```
 
-The planner server exposes **35 tools** (all 34 CWA tools + `cwa_plan_software`) and **11 resources**, making it a full-featured MCP server with planning capabilities.
+The planner server exposes **40 tools** (39 CWA tools + `cwa_plan_software`) and **12 resources**, making it a full-featured MCP server with planning capabilities.
 
-#### DDD/SDD Methodology
+The `cwa_plan_software` tool uses DDD/SDD principles to generate a structured project plan with clarifying questions, bounded contexts, ubiquitous language, ADRs, specifications, and a single executable CLI bootstrap script.
 
-The `cwa_plan_software` tool uses Domain-Driven Design (DDD) and Specification-Driven Development (SDD) principles:
+### MCP Tools Reference (39 Tools + 1 Planner Tool)
 
-**Domain-Driven Design (DDD):**
-- Strategic Design: identify subdomains (Core, Supporting, Generic)
-- Bounded Contexts: clear boundaries where domain models apply
-- Ubiquitous Language: shared vocabulary between team and code
-- Context Mapping: relationships between contexts
-
-**Specification-Driven Development (SDD):**
-- Specifications are the SOURCE OF TRUTH, not code
-- Requirements and acceptance criteria BEFORE implementation
-- Each spec is a contract that drives design, testing, and documentation
-
-The tool generates a structured planning document with:
-1. Clarifying questions for Claude to ask
-2. Bounded contexts (DDD Strategic Design)
-3. Ubiquitous Language (Domain Glossary)
-4. Architectural Decisions (ADRs)
-5. Specifications with acceptance criteria (SDD)
-6. **Single executable CLI bootstrap script** ready to copy-paste
-
-**Example flow:**
-
-> You: "I want to build a recipe app with user accounts, recipe sharing, and ratings"
-
-Claude Desktop asks clarifying questions about tech stack, scale, and auth method, then generates a single executable script:
-
-```bash
-# ═══════════════════════════════════════════════════════════════════════════════
-# CWA BOOTSTRAP SCRIPT — Recipe App
-# Domain-Driven Design + Specification-Driven Development
-# ═══════════════════════════════════════════════════════════════════════════════
-
-cwa init "recipe-app" && \
-cwa infra up && \
-cwa domain context new "Recipes" --description "Core: Recipe management and search" && \
-cwa domain context new "Users" --description "Supporting: User accounts and profiles" && \
-cwa memory add "Recipe: A named collection of ingredients and preparation steps" --type fact && \
-cwa memory add "ADR-001: Using SQLite for persistence. Rationale: simplicity, no server needed" --type decision && \
-cwa spec new "User Registration" --priority high \
-  -c "User can sign up with email" \
-  -c "Email verification required" && \
-cwa spec new "Recipe CRUD" --priority critical \
-  -c "User can create recipe" \
-  -c "User can search by ingredient" && \
-cwa graph sync && \
-cwa codegen all
-```
-
-Take this script to Claude Code for execution, or use the MCP tools directly.
-
-### MCP Tools Reference (34 Tools + 1 Planner Tool)
-
-#### Project & Context (4 tools)
+#### Project & Context (6 tools)
 
 | Tool | Description |
 |------|-------------|
@@ -1102,6 +494,8 @@ Take this script to Claude Code for execution, or use the MCP tools directly.
 | `cwa_get_context_summary` | Compact project state overview |
 | `cwa_get_domain_model` | Bounded contexts, entities, invariants |
 | `cwa_get_context_map` | Get DDD context map showing relationships |
+| `cwa_get_tech_stack` | Get project tech stack for agent selection |
+| `cwa_cache_status` | Redis connection and cache health status |
 
 #### Specifications (6 tools)
 
@@ -1126,7 +520,7 @@ Take this script to Claude Code for execution, or use the MCP tools directly.
 | `cwa_get_wip_status` | Get WIP limits status for all columns |
 | `cwa_set_wip_limit` | Set WIP limit for a Kanban column |
 
-#### Memory & Observations (8 tools)
+#### Memory & Observations (9 tools)
 
 | Tool | Description |
 |------|-------------|
@@ -1138,8 +532,9 @@ Take this script to Claude Code for execution, or use the MCP tools directly.
 | `cwa_memory_timeline` | Compact timeline (~50 tokens/entry) |
 | `cwa_memory_get` | Full observation details (~500 tokens/entry) |
 | `cwa_get_next_steps` | Suggested next actions based on state |
+| `cwa_hybrid_search` | Combined vector + keyword search across all data |
 
-#### Domain Modeling - DDD (4 tools)
+#### Domain Modeling — DDD (4 tools)
 
 | Tool | Description |
 |------|-------------|
@@ -1148,22 +543,29 @@ Take this script to Claude Code for execution, or use the MCP tools directly.
 | `cwa_get_glossary` | Get domain glossary terms |
 | `cwa_add_glossary_term` | Add term to domain glossary |
 
-#### Decisions - ADRs (2 tools)
+#### Decisions — ADRs (2 tools)
 
 | Tool | Description |
 |------|-------------|
 | `cwa_add_decision` | Register architectural decision with rationale |
 | `cwa_list_decisions` | List all architectural decisions |
 
-#### Knowledge Graph - Neo4j (3 tools)
+#### Knowledge Graph — Neo4j (4 tools)
 
 | Tool | Description |
 |------|-------------|
 | `cwa_graph_query` | Execute Cypher query on knowledge graph |
 | `cwa_graph_impact` | Analyze impact of entity changes |
-| `cwa_graph_sync` | Trigger SQLite to Neo4j sync |
+| `cwa_graph_sync` | Trigger Redis to Neo4j sync |
+| `cwa_graph_hyperedges` | Find multi-entity relationship clusters |
 
-### MCP Resources (11 Resources)
+#### Code Generation (1 tool)
+
+| Tool | Description |
+|------|-------------|
+| `cwa_codegen_agents` | Trigger tech-stack-aware agent generation |
+
+### MCP Resources (12 Resources)
 
 | URI | Description |
 |-----|-------------|
@@ -1178,6 +580,7 @@ Take this script to Claude Code for execution, or use the MCP tools directly.
 | `project://glossary` | Domain glossary terms and definitions |
 | `project://wip-status` | WIP limits and current counts per column |
 | `project://context-map` | Context relationships (upstream/downstream) |
+| `project://tech-stack` | Current tech stack and available agent templates |
 
 ### Generated Artifacts (`.claude/` Directory)
 
@@ -1185,76 +588,146 @@ CWA generates a complete Claude Code configuration directory:
 
 | Artifact | Source | Claude Code Feature |
 |----------|--------|---------------------|
-| `agents/*.md` | Bounded contexts | [Agents](https://docs.anthropic.com/claude-code/agents) - domain expert personas |
-| `skills/*/SKILL.md` | Approved specs | [Skills](https://docs.anthropic.com/claude-code/skills) - repeatable workflows |
-| `commands/*.md` | Built-in (8) | [Commands](https://docs.anthropic.com/claude-code/commands) - slash commands |
-| `rules/*.md` | Built-in (5) | [Rules](https://docs.anthropic.com/claude-code/rules) - code constraints |
-| `hooks.json` | Domain invariants | [Hooks](https://docs.anthropic.com/claude-code/hooks) - event-driven validation |
+| `agents/*.md` | Bounded contexts + tech stack | [Agents](https://docs.anthropic.com/claude-code/agents) — domain expert personas |
+| `skills/*/SKILL.md` | Approved specs + built-in (3) | [Skills](https://docs.anthropic.com/claude-code/skills) — repeatable workflows |
+| `commands/*.md` | Built-in (11) | [Commands](https://docs.anthropic.com/claude-code/commands) — slash commands |
+| `rules/*.md` | Built-in (5) | [Rules](https://docs.anthropic.com/claude-code/rules) — code constraints |
+| `hooks.json` | Domain invariants + all event types | [Hooks](https://docs.anthropic.com/claude-code/hooks) — event-driven validation |
 | `design-system.md` | UI screenshots | Design tokens for consistent UI |
-
-#### Built-in Agents (8)
-
-| Agent | Role | Key MCP Tools Used |
-|-------|------|--------------------|
-| `analyst.md` | Requirements research | `cwa_search_memory`, `cwa_memory_add` |
-| `architect.md` | DDD architecture decisions | `cwa_get_domain_model`, `cwa_add_decision`, `cwa_graph_query` |
-| `specifier.md` | Spec-driven development | `cwa_get_spec`, `cwa_generate_tasks` |
-| `implementer.md` | TDD implementation | `cwa_get_current_task`, `cwa_get_spec`, `cwa_observe`, `cwa_update_task_status` |
-| `reviewer.md` | Code review vs. criteria | `cwa_get_current_task`, `cwa_get_spec`, `cwa_update_task_status` |
-| `orchestrator.md` | Workflow coordination | All tools - central hub for workflow enforcement |
-| `tester.md` | BDD test generation | `cwa_get_spec`, `cwa_observe` |
-| `documenter.md` | Docs & ADR maintenance | `cwa_add_decision`, `cwa_memory_add`, codegen tools |
-
-#### Built-in Skills (2)
-
-| Skill | Purpose | Workflow |
-|-------|---------|----------|
-| `workflow-kickoff` | Feature idea → full workflow | Create spec → generate tasks → generate skill → update CLAUDE.md |
-| `refactor-safe` | Safe refactoring with tests | Record decision → run tests → refactor → verify → move to review |
 
 #### Built-in Commands (11)
 
 | Command | Purpose |
 |---------|---------|
-| `/project:create-spec` | Create specification with acceptance criteria |
-| `/project:implement-task` | Load current task + spec, implement, advance |
-| `/project:session-summary` | Generate session summary, capture insights |
-| `/project:next-task` | Pick next task respecting WIP limits |
-| `/project:review-code` | Review against acceptance criteria |
-| `/project:domain-discover` | Interactive domain discovery |
-| `/project:sync-context` | Regenerate all artifacts |
-| `/project:status` | Full project state dashboard |
-| `/cwa-commit` | Commit with Ollama-generated message (saves Claude tokens) |
-| `/cwa-commitpush` | Commit and push with Ollama-generated message |
-| `/cwa-commitmsg` | Preview generated commit message |
+| `/generate-tasks` | Create tasks from spec acceptance criteria |
+| `/run-backlog` | Plan and execute all tasks in the backlog |
+| `/project-status` | Show specs, tasks, and domain model overview |
+| `/next-task` | Pick and start next task with full CWA Kanban flow |
+| `/spec-review` | Review specification for SDD completeness |
+| `/domain-model` | Display complete domain model |
+| `/observe` | Record a development observation into CWA memory |
+| `/tech-stack` | View tech stack and available agent templates |
+| `/kanban` | Display Kanban board and manage task flow |
+| `/wip-check` | Verify WIP limits and flag violations |
+| `/sync` | Sync to knowledge graph and regenerate CLAUDE.md |
 
-#### Built-in Rules (5)
+#### Built-in Skills (3)
 
-| Rule | Enforces |
-|------|----------|
-| `workflow.md` | Spec before code, WIP limits, decision tracking |
-| `domain.md` | DDD principles, ubiquitous language, aggregate boundaries |
-| `tests.md` | AAA pattern, coverage gates, test naming |
-| `api.md` | REST conventions, input validation, security |
-| `memory.md` | When and what to record in memory |
+| Skill | Purpose |
+|-------|---------|
+| `workflow-kickoff` | Feature idea → spec → tasks → artifacts |
+| `refactor-safe` | Safe refactoring with test coverage |
+| `tdd-cycle` | Red-Green-Refactor TDD workflow |
+
+#### Generated Hooks (`.claude/hooks.json`)
+
+CWA generates hooks in the correct Claude Code object format with all 4 event types:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [{"type": "command", "command": "...danger check..."}] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Write", "hooks": [{"type": "command", "command": "cwa memory observe..."}] },
+      { "matcher": "Edit|MultiEdit", "hooks": [{"type": "command", "command": "cwa memory observe..."}] }
+    ],
+    "UserPromptSubmit": [
+      { "matcher": "", "hooks": [{"type": "command", "command": "cwa context status 2>/dev/null || true"}] }
+    ],
+    "Stop": [
+      { "matcher": "", "hooks": [{"type": "command", "command": "cwa task list --status in_progress 2>/dev/null || true"}] }
+    ]
+  }
+}
+```
+
+Tech-stack-specific hooks are added automatically (e.g., `cargo fmt` for Rust, `prettier` for TypeScript, `black` for Python).
+
+## Tech Stack Agent Templates
+
+CWA includes **28 pre-built expert agent templates** organized by technology. Set your stack with `cwa stack set` and they're automatically selected during `cwa codegen all`.
+
+### Template Categories
+
+**Rust (7 templates):**
+| Template | Expert In |
+|----------|-----------|
+| `rust-expert.md` | Ownership, lifetimes, idiomatic Rust |
+| `axum-expert.md` | Axum routing, extractors, middleware |
+| `tokio-expert.md` | Async runtime, tasks, channels |
+| `ddd-expert.md` | DDD patterns in Rust |
+| `redis-expert.md` | Redis data structures, pub/sub |
+| `serde-expert.md` | Serialization, JSON, custom derive |
+| `testing-expert.md` | Rust testing, mocks, property-based |
+
+**Elixir/Phoenix (5 templates):**
+| Template | Expert In |
+|----------|-----------|
+| `elixir-expert.md` | Functional Elixir, pattern matching |
+| `phoenix-expert.md` | Phoenix controllers, contexts |
+| `liveview-expert.md` | Phoenix LiveView, real-time UI |
+| `ecto-expert.md` | Ecto schemas, queries, migrations |
+| `otp-expert.md` | GenServer, Supervisor, OTP patterns |
+
+**TypeScript/React (6 templates):**
+| Template | Expert In |
+|----------|-----------|
+| `typescript-expert.md` | TypeScript, type safety, generics |
+| `react-expert.md` | React 19, hooks, Server Components |
+| `nextjs-expert.md` | Next.js App Router, RSC |
+| `tailwind-expert.md` | Tailwind CSS v4, utility-first |
+| `shadcn-expert.md` | shadcn/ui components |
+| `prisma-expert.md` | Prisma ORM, migrations |
+
+**Python (4 templates):**
+| Template | Expert In |
+|----------|-----------|
+| `python-expert.md` | Python 3.12+, type hints, async |
+| `fastapi-expert.md` | FastAPI, Pydantic, OpenAPI |
+| `sqlalchemy-expert.md` | SQLAlchemy 2.0, async sessions |
+| `langchain-expert.md` | LangChain, LLM integration |
+
+**Common Infrastructure (6 templates):**
+| Template | Expert In |
+|----------|-----------|
+| `neo4j-expert.md` | Cypher queries, graph modeling |
+| `qdrant-expert.md` | Vector search, collections |
+| `docker-expert.md` | Containers, Compose, optimization |
+| `kubernetes-expert.md` | K8s deployments, services |
+| `graphql-expert.md` | GraphQL schema, resolvers |
+| `grpc-expert.md` | gRPC, protobuf, streaming |
+
+### How Stack Selection Works
+
+```bash
+# 1. Set your stack
+cwa stack set rust axum redis neo4j qdrant
+
+# .cwa/stack.json is written:
+# {"tech_stack": ["rust", "axum", "redis", "neo4j", "qdrant"]}
+
+# 2. Preview which agents would be generated
+cwa stack show
+# → 5 agent templates: rust-expert, axum-expert, tokio-expert, redis-expert, neo4j-expert
+
+# 3. Generate all artifacts
+cwa codegen all
+# .cwa/stack.json is read FIRST (before Redis), ensuring correct agents
+# even without connectivity
+```
 
 ## Web Dashboard
 
 Start with `cwa serve` and open `http://localhost:3030`.
 
 ```bash
-# Start web server with live reload support
 cwa serve
-
-# With logging (see runtime logs in terminal)
-cwa serve --log
-
-# Custom port (remember to set CWA_WEB_URL for MCP)
-export CWA_WEB_URL=http://127.0.0.1:8080
-cwa serve --port 8080
+cwa serve --log         # With logging
 ```
 
-**Live Reload:** When Claude Code updates tasks via MCP tools (`cwa_update_task_status`), the web board updates automatically. The MCP server sends HTTP notifications to the web server, which broadcasts to all connected browsers via WebSocket.
+**Real-time WebSocket Auto-refresh:** When Claude Code updates tasks via MCP tools (`cwa_update_task_status`), the web board updates automatically. The board connects to the `/ws` WebSocket endpoint and listens for `BoardRefresh` or `TaskUpdated` messages from the MCP server.
 
 ### REST API (`/api/*`)
 
@@ -1262,24 +735,10 @@ cwa serve --port 8080
 |--------|----------|-------------|
 | GET | `/api/tasks` | List all tasks |
 | POST | `/api/tasks` | Create a task |
-| GET | `/api/tasks/{id}` | Get task by ID |
-| PUT | `/api/tasks/{id}` | Update task |
 | GET | `/api/board` | Get Kanban board with columns |
 | GET | `/api/specs` | List specifications |
-| POST | `/api/specs` | Create specification |
-| GET | `/api/specs/{id}` | Get spec by ID |
-| POST | `/api/specs/{id}/generate-tasks` | Generate tasks from spec criteria |
 | GET | `/api/domains` | List bounded contexts |
-| GET | `/api/decisions` | List decisions |
-| POST | `/api/decisions` | Create decision |
 | GET | `/api/context/summary` | Get context summary |
-
-### HTMX Kanban Board (root `/`)
-
-The web UI uses HTMX + Sortable.js for a drag-and-drop Kanban board:
-- Drag cards between columns
-- WIP limits enforced visually
-- **Real-time updates via WebSocket** at `/ws` - when Claude Code updates tasks via MCP, the board updates automatically without page refresh
 
 ## Task Workflow
 
@@ -1292,32 +751,23 @@ Tasks follow a strict workflow with WIP limits:
 └─────────┘    └──────┘    └─────────────┘    └────────┘    └──────┘
 ```
 
-- **backlog**: Unlimited - Ideas and future work
-- **todo**: Max 5 - Ready to be picked up
-- **in_progress**: Max 1 - Currently being worked on
-- **review**: Max 2 - Waiting for review
-- **done**: Unlimited - Completed work
-
 ## Docker Services
 
-`cwa init` creates a complete Docker infrastructure in `.cwa/docker/`:
+`cwa init` creates Docker infrastructure in `.cwa/docker/`:
 
 | Service | Image | Ports | Purpose |
 |---------|-------|-------|---------|
-| Neo4j | `neo4j:5.26-community` | 7474 (HTTP), 7687 (Bolt) | Knowledge Graph |
-| Qdrant | `qdrant/qdrant:v1.13.2` | 6333 (HTTP), 6334 (gRPC) | Vector Store |
+| Redis | `redis:7-alpine` | 6379 | Primary data store + pub/sub |
+| Neo4j | `neo4j:5.26-community` | 7474, 7687 | Knowledge Graph |
+| Qdrant | `qdrant/qdrant:v1.13.2` | 6333, 6334 | Vector Store |
 | Ollama | `ollama/ollama:0.5.4` | 11434 | Embeddings + Text Generation |
 
 **Ollama Models:**
+
 | Model | Purpose | Size |
 |-------|---------|------|
 | `nomic-embed-text` | Embeddings (768 dims) | 274MB |
 | `qwen2.5-coder:3b` | Commit message generation | 1.9GB |
-
-Both models are automatically pulled during `cwa infra up`.
-
-Default credentials (configurable via `.cwa/docker/.env`):
-- Neo4j: `neo4j` / `cwa_dev_2026`
 
 ## Project Structure
 
@@ -1326,20 +776,20 @@ When you run `cwa init`, the following structure is created:
 ```
 my-project/
 ├── .cwa/
-│   ├── cwa.db                    # SQLite database
+│   ├── stack.json                # Tech stack config (cwa stack set)
 │   ├── constitution.md           # Project values & constraints
 │   ├── scripts/                  # Git helper scripts
 │   │   ├── cwa-git-msg.sh        # Generate commit message via Ollama
 │   │   ├── cwa-git-commit.sh     # Commit with generated message
 │   │   └── cwa-git-commitpush.sh # Commit + push
 │   └── docker/                   # Docker infrastructure
-│       ├── docker-compose.yml    # Neo4j, Qdrant, Ollama services
+│       ├── docker-compose.yml    # Redis, Neo4j, Qdrant, Ollama
 │       ├── .env.example          # Environment template
 │       └── scripts/
 │           ├── init-qdrant.sh    # Qdrant collection setup
 │           └── init-neo4j.cypher # Neo4j constraints/indexes
 ├── .claude/
-│   ├── agents/                   # Agent definitions (8 agents)
+│   ├── agents/                   # Agent definitions
 │   │   ├── analyst.md            # Requirements research
 │   │   ├── architect.md          # DDD architecture
 │   │   ├── specifier.md          # Spec-driven development
@@ -1347,305 +797,101 @@ my-project/
 │   │   ├── reviewer.md           # Code review
 │   │   ├── orchestrator.md       # Workflow coordination
 │   │   ├── tester.md             # Test generation (BDD)
-│   │   └── documenter.md         # Docs & ADR maintenance
+│   │   ├── documenter.md         # Docs & ADR maintenance
+│   │   └── [tech]-expert.md...   # Tech-stack agents (up to 28)
 │   ├── commands/                  # Slash commands (11 commands)
-│   │   ├── create-spec.md        # Create specification workflow
-│   │   ├── implement-task.md     # Task implementation workflow
-│   │   ├── session-summary.md    # Session summary generation
-│   │   ├── next-task.md          # Pick and start next task
-│   │   ├── review-code.md        # Review against spec criteria
-│   │   ├── domain-discover.md    # Domain discovery workflow
-│   │   ├── sync-context.md       # Regenerate all artifacts
-│   │   ├── status.md             # Full project status
-│   │   ├── cwa-commit.md         # Git commit with Ollama
-│   │   ├── cwa-commitpush.md     # Git commit + push with Ollama
-│   │   └── cwa-commitmsg.md      # Preview commit message
-│   ├── skills/                    # Skill definitions (2 built-in)
-│   │   ├── workflow-kickoff/     # Feature idea -> full workflow
-│   │   │   └── SKILL.md
-│   │   └── refactor-safe/        # Safe refactoring with tests
-│   │       └── SKILL.md
+│   │   ├── generate-tasks.md
+│   │   ├── run-backlog.md
+│   │   ├── project-status.md
+│   │   ├── next-task.md
+│   │   ├── spec-review.md
+│   │   ├── domain-model.md
+│   │   ├── observe.md
+│   │   ├── tech-stack.md
+│   │   ├── kanban.md
+│   │   ├── wip-check.md
+│   │   └── sync.md
+│   ├── skills/                    # Skill definitions (3 built-in)
+│   │   ├── workflow-kickoff/
+│   │   ├── refactor-safe/
+│   │   └── tdd-cycle/
 │   ├── rules/                     # Code rules (5 rule files)
-│   │   ├── api.md                # API patterns & security
-│   │   ├── domain.md             # DDD principles
-│   │   ├── tests.md              # Test structure & coverage
-│   │   ├── workflow.md           # CWA workflow enforcement
-│   │   └── memory.md            # When to record memories
-│   └── hooks.json                 # Validation hooks
+│   │   ├── api.md
+│   │   ├── domain.md
+│   │   ├── tests.md
+│   │   ├── workflow.md
+│   │   └── memory.md
+│   └── hooks.json                 # All 4 event types + tech-stack hooks
 ├── .mcp.json                      # MCP server configuration
 ├── CLAUDE.md                      # Auto-generated project context
-└── docs/                          # Documentation directory
+└── docs/
 ```
 
-## Use Cases
+> **Note:** Redis connection defaults to `redis://127.0.0.1:6379`. Override with `REDIS_URL` environment variable.
 
-### Use Case 1: SaaS Startup MVP
+## Crate Layout
 
-**Scenario:** Two developers building a subscription billing platform. They work in different timezones and need Claude Code to maintain context across sessions.
-
-```bash
-# Day 1: Project setup
-cwa init billing-platform
-cd billing-platform
-cwa infra up
-
-# Domain discovery
-cwa domain context new "Subscriptions" --description "Plan management and billing cycles"
-cwa domain context new "Payments" --description "Payment processing via Stripe"
-cwa domain context new "Accounts" --description "User accounts and team management"
-
-# Create initial specs
-cwa spec from-prompt "1. User can sign up and create a team
-2. Team owner can select a subscription plan (free, pro, enterprise)
-3. System processes monthly payments via Stripe
-4. Users receive email receipts after successful payment
-5. Failed payments retry 3 times with exponential backoff" --priority high
-
-# Day 2: Developer A starts working
-cwa task board
-cwa task move <signup-task-id> in_progress
-# Claude reads the spec via MCP, implements with full context
-
-# Day 3: Developer B picks up where A left off
-cwa context status
-# Claude instantly knows: current spec, completed tasks, decisions made
-cwa memory search "payment retry"
-# Finds: "Using exponential backoff: 1s, 4s, 16s delays"
-
-# Week 2: Impact analysis before a change
-cwa graph impact context subscriptions-ctx
-# Shows: 3 specs, 8 tasks, 2 decisions affected
-# Developer makes informed decision about the change scope
 ```
-
-**What CWA provides:** Shared context between developers and sessions. Claude Code knows the domain model, pending work, and past decisions without re-explanation.
-
-### Use Case 2: Open Source Library Migration (v1 to v2)
-
-**Scenario:** A library maintainer migrating from v1 to v2 with breaking changes. The migration spans 3 months with many design decisions.
-
-```bash
-cwa init my-lib-v2
-cd my-lib-v2
-
-# Define breaking changes as specs
-cwa spec from-prompt --file migration-plan.md --priority critical
-# Parses: "## New async API\n## Remove deprecated methods\n## New error types"
-
-# Record design decisions as they happen
-cwa memory add "Chose thiserror over anyhow for public error types - users need to match on variants" --type decision
-cwa memory add "All public async fns return impl Future, not boxed - zero-cost for callers" --type decision
-cwa memory add "Migration guide: provide From impls for old types -> new types" --type pattern
-
-# Months later: "Why did we do X?"
-cwa memory search "error types"
-# Instantly finds the decision with rationale
-
-# Track what's done vs. remaining
-cwa task board
-# See at a glance: 12/20 migration tasks done
-
-# Before releasing: verify all specs are validated
-cwa spec list
-# Check: all specs must be "validated" status before v2 release
-
-# Generate migration guide context
-cwa codegen claude-md
-# CLAUDE.md now includes all decisions, making it trivial for Claude
-# to help write migration documentation
-```
-
-**What CWA provides:** Decision history across months. When you return after a break, `cwa memory search` and the knowledge graph restore your mental model instantly.
-
-### Use Case 3: Solo Developer Side Project
-
-**Scenario:** A developer working on a weekend project. They can only spend a few hours per week and often forget context between sessions.
-
-```bash
-# Weekend 1: Bootstrap
-cwa init recipe-app
-cd recipe-app
-
-# Lightweight usage - no Docker needed for basic features
-cwa spec new "Recipe CRUD" --description "Create, view, edit, delete recipes" --priority high
-cwa spec new "Ingredient search" --description "Search recipes by ingredients" --priority medium
-
-cwa task new "Set up SQLite schema" --priority high
-cwa task new "Recipe list endpoint" --priority high
-cwa task new "Recipe detail page" --priority medium
-cwa task board
-
-# Weekend 2 (2 weeks later): "Where was I?"
-cwa context status
-# Output:
-#   Active Spec: Recipe CRUD
-#   Current Task: Recipe list endpoint (in_progress)
-#   Done: 1/3 tasks
-#
-# Claude immediately knows the full context
-
-# Weekend 3: Decisions pile up
-cwa memory add "Using askama templates, not Tera - compile-time checking" --type decision
-cwa memory add "Recipe model has: title, ingredients (JSON), steps (JSON), cook_time" --type fact
-
-# Weekend 5: "What did I decide about the data model?"
-cwa memory search "recipe model"
-# Instant recall without re-reading code
-
-# Token-efficient: check context size
-cwa tokens analyze --all
-# Only 1200 tokens - well within budget for a small project
-```
-
-**What CWA provides:** Lightweight context persistence for sporadic work. No Docker required for basic features. SQLite handles everything locally.
-
-### Use Case 4: Feature Development with Full Workflow
-
-**Scenario:** Adding a notification system to an existing project, demonstrating the complete CWA workflow.
-
-```bash
-# Step 1: Specification
-cwa spec new "User Notifications" \
-  --description "Real-time and email notifications for account events" \
-  --priority high
-
-# Step 2: Domain Discovery
-cwa domain context new "Notifications" \
-  --description "Event-driven user notifications (in-app, email, push)"
-cwa graph sync
-
-# Step 3: Add acceptance criteria and generate tasks
-cwa spec add-criteria <spec-id> \
-  "Define notification events enum" \
-  "Create notification store (SQLite)" \
-  "Implement WebSocket delivery" \
-  "Add email delivery via SMTP" \
-  "Build notification preferences UI"
-cwa task generate <spec-id>
-
-# Step 4: Start Implementation
-cwa task move <first-task-id> todo
-cwa task move <first-task-id> in_progress
-# Claude's orchestrator agent takes over:
-#   - Reads the spec via MCP
-#   - Delegates to tester agent (writes tests first)
-#   - Delegates to implementer agent (implements to pass tests)
-#   - Runs review-code command
-
-# Step 5: Record Decisions
-cwa memory add "Using SSE instead of WebSocket for notifications - simpler, sufficient for one-way" --type decision
-
-# Step 6: Impact Analysis
-cwa graph impact context notifications-ctx
-# Shows this context has no upstream dependencies yet - safe to build independently
-
-# Step 7: Generate Artifacts
-cwa codegen all
-# Creates notifications-expert agent, notification skill, updated CLAUDE.md
-
-# Step 8: Verify Token Budget
-cwa tokens optimize --budget 8000
-# Ensures generated context stays within Claude's effective window
-```
-
-## MCP-Driven Workflow Example
-
-### Session 1: Project Bootstrap
-
-**You say to Claude Code:**
-
-> "I'm building a subscription billing platform for a SaaS startup.
-> Two developers, different timezones. We need user management,
-> subscription plans (free/pro/enterprise), Stripe payments,
-> and email receipts."
-
-**Claude Code (via MCP) automatically:**
-1. Creates bounded contexts: Subscriptions, Payments, Accounts
-2. Creates specs with acceptance criteria for each feature
-3. Generates tasks from specs, populating the Kanban board
-4. Records initial design decisions
-5. Generates Claude Code artifacts (agents, skills, CLAUDE.md)
-
-**You see:**
-- Kanban board populated with tasks
-- `.claude/agents/` with expert agents per context
-- `CLAUDE.md` with full project context
-- Ready to start implementing
-
-### Session 2: Continue Development
-
-**You say to Claude Code:**
-
-> "What should I work on next?"
-
-**Claude Code (via MCP) automatically:**
-1. Reads project state via `cwa_get_context_summary`
-2. Checks WIP limits via `cwa_get_current_task`
-3. Suggests the highest-priority unblocked task
-4. Loads the spec with acceptance criteria
-5. Begins TDD implementation
-
-### Session 3: Memory Across Sessions
-
-**You say to Claude Code:**
-
-> "Why did we choose Stripe over PayPal?"
-
-**Claude Code (via MCP) automatically:**
-1. Searches memory via `cwa_memory_semantic_search`
-2. Finds the decision recorded in Session 1
-3. Returns the rationale with full context
-
----
-
-## Manual CLI Workflow (Reference)
-
-For users who prefer direct CLI control, scripting, or CI/CD integration:
-
-```bash
-# 1. Create and initialize project
-cwa init my-saas
-cd my-saas
-
-# 2. Start infrastructure (optional, for graph/embeddings)
-cwa infra up
-
-# 3. Define your domain
-cwa domain context new "UserManagement" --description "User registration and profiles"
-cwa domain context new "Billing" --description "Subscriptions and payments"
-
-# 4. Create specifications
-cwa spec new "User Registration" --priority high \
-  --description "Allow users to sign up with email/password"
-
-# 5. Break down into tasks
-cwa task new "Create User model" --priority high --spec <spec-id>
-cwa task new "Implement signup endpoint" --priority high
-cwa task new "Add email verification" --priority medium
-
-# 6. Work through the Kanban
-cwa task move <id> todo
-cwa task move <id> in_progress
-# ... do the work ...
-cwa task move <id> review
-cwa task move <id> done
-
-# 7. Record decisions as you go
-cwa memory add "Using bcrypt for password hashing" --type decision
-cwa memory add "Email verification required before login" --type fact
-
-# 8. Sync to Knowledge Graph
-cwa graph sync
-cwa graph impact spec <spec-id>
-
-# 9. Generate Claude Code artifacts
-cwa codegen all
-
-# 10. Analyze token budget
-cwa tokens report
-
-# 11. Open web dashboard
-cwa serve
+cwa/
+├── Cargo.toml                # Workspace manifest (v0.9.0)
+├── crates/
+│   ├── cwa-cli/              # CLI binary (clap)
+│   │   └── src/
+│   │       ├── main.rs
+│   │       ├── commands/     # Command handlers (incl. stack.rs)
+│   │       └── output.rs     # Terminal formatting
+│   ├── cwa-core/             # Domain logic
+│   │   └── src/
+│   │       ├── project/      # Init, scaffold, config
+│   │       ├── spec/         # SDD specs + parser
+│   │       ├── domain/       # DDD contexts & objects
+│   │       ├── task/         # Kanban task management
+│   │       ├── board/        # Kanban board model
+│   │       ├── decision/     # ADR management
+│   │       └── memory/       # Memory entries
+│   ├── cwa-db/               # Database abstraction (Redis)
+│   │   └── src/
+│   │       ├── lib.rs        # Re-exports + broadcast channel
+│   │       ├── broadcast.rs  # WebSocketMessage types
+│   │       └── queries/      # Delegates to cwa-redis
+│   ├── cwa-redis/            # Redis persistence layer
+│   │   └── src/
+│   │       ├── client.rs     # Connection pool + error types
+│   │       └── queries/      # CRUD for all domain types
+│   ├── cwa-graph/            # Neo4j integration
+│   │   └── src/
+│   │       ├── client.rs
+│   │       ├── schema.rs
+│   │       ├── sync/         # Redis -> Neo4j sync pipeline
+│   │       └── queries/      # Impact, explore, search
+│   ├── cwa-embedding/        # Vector embeddings
+│   │   └── src/
+│   │       ├── ollama.rs
+│   │       ├── qdrant.rs
+│   │       ├── memory.rs
+│   │       └── search.rs
+│   ├── cwa-codegen/          # Artifact generation
+│   │   └── src/
+│   │       ├── agents.rs     # Agent .md from contexts
+│   │       ├── skills.rs     # Skill .md from specs
+│   │       ├── hooks.rs      # hooks.json (4 event types)
+│   │       ├── commands.rs   # 11 slash command .md files
+│   │       ├── tech_agents.rs # 28 tech-stack agent templates
+│   │       └── claude_md.rs  # CLAUDE.md regeneration
+│   │   └── templates/
+│   │       └── agents/       # 28 .md agent template files
+│   ├── cwa-token/            # Token analysis
+│   ├── cwa-mcp/              # MCP server (39 tools, 12 resources)
+│   │   └── src/
+│   │       ├── server.rs     # JSON-RPC over stdio
+│   │       └── planner_template.rs # DDD/SDD planning template
+│   └── cwa-web/              # Web server
+│       ├── src/
+│       │   ├── routes/
+│       │   ├── state.rs
+│       │   └── websocket.rs  # BoardRefresh / TaskUpdated broadcast
+│       └── templates/        # Askama HTML templates
+└── docker/                   # Docker Compose infrastructure
 ```
 
 ## Development
@@ -1663,66 +909,16 @@ cargo build --release
 cargo test --workspace
 ```
 
-### Crate Layout
+### Environment Variables
 
-```
-cwa/
-├── Cargo.toml                # Workspace manifest
-├── crates/
-│   ├── cwa-cli/              # CLI binary (clap)
-│   │   └── src/
-│   │       ├── main.rs
-│   │       ├── commands/     # Command handlers
-│   │       └── output.rs     # Terminal formatting
-│   ├── cwa-core/             # Domain logic
-│   │   └── src/
-│   │       ├── project/      # Init, scaffold, config
-│   │       ├── spec/         # SDD specs + parser
-│   │       ├── domain/       # DDD contexts & objects
-│   │       ├── task/         # Kanban task management
-│   │       ├── board/        # Kanban board model
-│   │       ├── decision/     # ADR management
-│   │       └── memory/       # Memory entries
-│   ├── cwa-db/               # SQLite persistence
-│   │   └── src/
-│   │       ├── pool.rs
-│   │       ├── migrations/   # Numbered SQL migrations
-│   │       └── queries/      # CRUD query modules
-│   ├── cwa-graph/            # Neo4j integration
-│   │   └── src/
-│   │       ├── client.rs     # Connection pool
-│   │       ├── schema.rs     # Constraints/indexes
-│   │       ├── sync/         # SQLite -> Neo4j sync pipeline
-│   │       └── queries/      # Impact, explore, search
-│   ├── cwa-embedding/        # Vector embeddings
-│   │   └── src/
-│   │       ├── ollama.rs     # Ollama HTTP client
-│   │       ├── qdrant.rs     # Qdrant gRPC client
-│   │       ├── memory.rs     # Memory indexing pipeline
-│   │       └── search.rs     # Semantic search
-│   ├── cwa-codegen/          # Artifact generation
-│   │   └── src/
-│   │       ├── agents.rs     # Agent .md from contexts
-│   │       ├── skills.rs     # Skill .md from specs
-│   │       ├── hooks.rs      # hooks.json from invariants
-│   │       └── claude_md.rs  # CLAUDE.md regeneration
-│   ├── cwa-token/            # Token analysis
-│   │   └── src/
-│   │       ├── analyzer.rs   # Token counting (cl100k_base)
-│   │       ├── optimizer.rs  # Budget optimization
-│   │       └── reporter.rs   # Usage reports
-│   ├── cwa-mcp/              # MCP server
-│   │   └── src/
-│   │       └── server.rs     # JSON-RPC over stdio
-│   └── cwa-web/              # Web server
-│       ├── src/
-│       │   ├── routes/       # REST + HTMX handlers
-│       │   ├── state.rs
-│       │   └── websocket.rs
-│       └── templates/        # Askama HTML templates
-├── docker/                   # Docker Compose infrastructure
-└── install.sh                # macOS installation script
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_URL` | `redis://127.0.0.1:6379` | Redis connection string |
+| `NEO4J_URI` | `bolt://127.0.0.1:7687` | Neo4j connection |
+| `QDRANT_URL` | `http://127.0.0.1:6333` | Qdrant endpoint |
+| `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama endpoint |
+| `CWA_WEB_URL` | `http://127.0.0.1:3030` | Web server URL (for MCP notify) |
+| `ANTHROPIC_API_KEY` | — | Required for `cwa design from-image` |
 
 ## License
 
