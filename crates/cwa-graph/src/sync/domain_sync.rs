@@ -54,15 +54,23 @@ pub async fn sync_domain(client: &GraphClient, db: &DbPool, project_id: &str) ->
         client.execute(rel_query).await?;
         result.relationships_created += 1;
 
-        // Upstream context relationships (stored as JSON array of context IDs)
+        // Upstream context relationships — use relationship_type if present,
+        // otherwise default to UPSTREAM_OF.
+        // Supported DDD patterns: CONFORMIST, ANTI_CORRUPTION_LAYER,
+        // OPEN_HOST_SERVICE, PARTNERSHIP, SHARED_KERNEL, CUSTOMER_SUPPLIER
+        let rel_type = ctx
+            .relationship_type
+            .as_deref()
+            .map(ddd_relationship_type)
+            .unwrap_or("UPSTREAM_OF");
+
         if let Some(ref upstream_json) = ctx.upstream_contexts {
             if let Ok(upstream_ids) = serde_json::from_str::<Vec<String>>(upstream_json) {
                 for up_id in &upstream_ids {
-                    let up_query = Query::new(
-                        "MATCH (c:BoundedContext {id: $ctx_id}), (up:BoundedContext {id: $up_id})
-                         MERGE (up)-[:UPSTREAM_OF]->(c)"
-                            .to_string(),
-                    )
+                    let up_query = Query::new(format!(
+                        "MATCH (c:BoundedContext {{id: $ctx_id}}), (up:BoundedContext {{id: $up_id}})
+                         MERGE (up)-[:{rel_type}]->(c)"
+                    ))
                     .param("ctx_id", ctx.id.as_str())
                     .param("up_id", up_id.as_str());
 
@@ -77,8 +85,17 @@ pub async fn sync_domain(client: &GraphClient, db: &DbPool, project_id: &str) ->
             .map_err(|e| anyhow::anyhow!("Failed to list domain objects: {}", e))?;
 
         for obj in &objects {
-            let obj_query = Query::new(
-                "MERGE (e:DomainEntity {id: $id})
+            // Use a richer node label based on the DDD object type.
+            // Core label is always DomainEntity; extended types get their own label.
+            let extra_label = domain_object_extra_label(&obj.object_type);
+            let merge_clause = if extra_label.is_empty() {
+                "MERGE (e:DomainEntity {id: $id})".to_string()
+            } else {
+                format!("MERGE (e:DomainEntity:{extra_label} {{id: $id}})")
+            };
+
+            let obj_query = Query::new(format!(
+                "{merge_clause}
                  SET e.name = $name,
                      e.entity_type = $entity_type,
                      e.description = $description,
@@ -87,8 +104,7 @@ pub async fn sync_domain(client: &GraphClient, db: &DbPool, project_id: &str) ->
                      e.invariants = $invariants,
                      e.created_at = $created_at,
                      e.updated_at = $updated_at"
-                    .to_string(),
-            )
+            ))
             .param("id", obj.id.as_str())
             .param("name", obj.name.as_str())
             .param("entity_type", obj.object_type.as_str())
@@ -172,4 +188,41 @@ pub async fn sync_domain(client: &GraphClient, db: &DbPool, project_id: &str) ->
     }
 
     Ok(result)
+}
+
+/// Map a DDD relationship type string to the Neo4j relationship label.
+///
+/// Supported types (case-insensitive):
+/// - conformist / CONFORMIST
+/// - anti_corruption_layer / ACL
+/// - open_host_service / OHS
+/// - partnership / PARTNERSHIP
+/// - shared_kernel / SHARED_KERNEL
+/// - customer_supplier / CUSTOMER_SUPPLIER
+///
+/// Unknown types fall back to UPSTREAM_OF.
+fn ddd_relationship_type(raw: &str) -> &'static str {
+    match raw.to_uppercase().replace('-', "_").as_str() {
+        "CONFORMIST" => "CONFORMIST",
+        "ANTI_CORRUPTION_LAYER" | "ACL" => "ANTI_CORRUPTION_LAYER",
+        "OPEN_HOST_SERVICE" | "OHS" => "OPEN_HOST_SERVICE",
+        "PARTNERSHIP" => "PARTNERSHIP",
+        "SHARED_KERNEL" => "SHARED_KERNEL",
+        "CUSTOMER_SUPPLIER" => "CUSTOMER_SUPPLIER",
+        _ => "UPSTREAM_OF",
+    }
+}
+
+/// Return an additional Neo4j label for DDD object types beyond the base `DomainEntity`.
+///
+/// New types introduced in v0.8.0: DomainEvent, Saga, Port, Adapter.
+/// Classic types (Entity, ValueObject, Aggregate, Service) use only the base label.
+fn domain_object_extra_label(object_type: &str) -> &'static str {
+    match object_type.to_lowercase().as_str() {
+        "domainevent" | "domain_event" => "DomainEvent",
+        "saga" => "Saga",
+        "port" => "Port",
+        "adapter" => "Adapter",
+        _ => "",
+    }
 }

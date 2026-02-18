@@ -8,6 +8,7 @@ pub mod domain_sync;
 pub mod kanban_sync;
 pub mod decision_sync;
 pub mod design_sync;
+pub mod memory;
 
 use anyhow::{Context, Result};
 use neo4rs::Query;
@@ -71,6 +72,12 @@ pub async fn run_full_sync(client: &GraphClient, db: &DbPool, project_id: &str) 
         .context("Failed to sync design systems")?;
     info!(nodes = design_result.nodes_created + design_result.nodes_updated, rels = design_result.relationships_created, "Design systems synced");
     total.merge(&design_result);
+
+    // Sync observations as reasoning memory nodes
+    let memory_result = memory::sync_observations(client, db, project_id).await
+        .context("Failed to sync observations")?;
+    info!(nodes = memory_result.nodes_created, rels = memory_result.relationships_created, "Observations synced");
+    total.merge(&memory_result);
 
     // Sync state tracking not needed with Redis backend
 
