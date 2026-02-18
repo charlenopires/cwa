@@ -23,7 +23,7 @@ pub async fn create_project(target_dir: &Path, name: &str) -> CwaResult<bool> {
     create_rule_templates(target_dir).await?;
     create_skill_templates(target_dir).await?;
     create_hooks_json(target_dir).await?;
-    create_docker_infrastructure(target_dir).await?;
+    create_docker_infrastructure(target_dir, name).await?;
     create_git_scripts(target_dir).await?;
 
     // Register project in Redis (optional — infra may not be running yet).
@@ -1056,90 +1056,136 @@ async fn create_hooks_json(target_dir: &Path) -> CwaResult<()> {
 }
 
 /// Create Docker infrastructure files.
-async fn create_docker_infrastructure(target_dir: &Path) -> CwaResult<()> {
+async fn create_docker_infrastructure(target_dir: &Path, name: &str) -> CwaResult<()> {
     let docker_dir = target_dir.join(".cwa/docker");
     let scripts_dir = docker_dir.join("scripts");
 
-    // Docker Compose for CWA infrastructure (Neo4j, Qdrant, Ollama)
-    let docker_compose = r#"# CWA Infrastructure - Knowledge Graph + Semantic Memory
-# Start with: docker compose -f .cwa/docker/docker-compose.yml up -d
+    // Docker Compose for CWA infrastructure (Redis, Neo4j, Qdrant, Ollama).
+    // Container names are scoped to the project so multiple projects can coexist.
+    let docker_compose = format!(
+        r#"# CWA Infrastructure - Primary Store + Knowledge Graph + Semantic Memory
+# Start with: cwa infra up
+
+name: {name}
 
 services:
+  # ===========================================
+  # REDIS STACK - Primary Data Store
+  # ===========================================
+  redis:
+    image: redis/redis-stack:latest
+    container_name: {name}-redis
+    ports:
+      - "${{REDIS_PORT:-6379}}:6379"
+      - "${{REDIS_INSIGHT_PORT:-8001}}:8001"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --appendfsync everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - cwa-network
+    restart: unless-stopped
+
+  # ===========================================
+  # NEO4J - Knowledge Graph
+  # ===========================================
   neo4j:
     image: neo4j:5.26-community
-    container_name: cwa-neo4j
+    container_name: {name}-neo4j
     environment:
-      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-cwa_dev_2026}
+      - NEO4J_AUTH=neo4j/${{NEO4J_PASSWORD:-cwa_dev_2026}}
       - NEO4J_PLUGINS=["apoc"]
       - NEO4J_apoc_export_file_enabled=true
       - NEO4J_apoc_import_file_enabled=true
       - NEO4J_apoc_import_file_use__neo4j__config=true
     ports:
-      - "${NEO4J_HTTP_PORT:-7474}:7474"
-      - "${NEO4J_BOLT_PORT:-7687}:7687"
+      - "${{NEO4J_HTTP_PORT:-7474}}:7474"
+      - "${{NEO4J_BOLT_PORT:-7687}}:7687"
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs
     networks:
       - cwa-network
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
+  # ===========================================
+  # QDRANT - Vector Store
+  # ===========================================
   qdrant:
     image: qdrant/qdrant:v1.13.2
-    container_name: cwa-qdrant
+    container_name: {name}-qdrant
     ports:
-      - "${QDRANT_HTTP_PORT:-6333}:6333"
-      - "${QDRANT_GRPC_PORT:-6334}:6334"
+      - "${{QDRANT_HTTP_PORT:-6333}}:6333"
+      - "${{QDRANT_GRPC_PORT:-6334}}:6334"
     volumes:
       - qdrant-data:/qdrant/storage
     networks:
       - cwa-network
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6333/healthz"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 5s
+    restart: unless-stopped
 
+  # ===========================================
+  # OLLAMA - Local LLM (Embeddings + Generation)
+  # ===========================================
   ollama:
     image: ollama/ollama:0.5.4
-    container_name: cwa-ollama
+    container_name: {name}-ollama
     ports:
-      - "${OLLAMA_PORT:-11434}:11434"
+      - "${{OLLAMA_PORT:-11434}}:11434"
     volumes:
       - ollama-data:/root/.ollama
     networks:
       - cwa-network
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:11434/api/tags"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
 networks:
   cwa-network:
     driver: bridge
 
 volumes:
+  redis-data:
   neo4j-data:
   neo4j-logs:
   qdrant-data:
   ollama-data:
-"#;
+"#
+    );
     fs::write(docker_dir.join("docker-compose.yml"), docker_compose).await?;
 
     // Environment template
     let env_example = r#"# CWA Infrastructure Configuration
+REDIS_PORT=6379
+REDIS_INSIGHT_PORT=8001
 NEO4J_PASSWORD=cwa_dev_2026
 NEO4J_HTTP_PORT=7474
 NEO4J_BOLT_PORT=7687
 QDRANT_HTTP_PORT=6333
 QDRANT_GRPC_PORT=6334
 OLLAMA_PORT=11434
-OLLAMA_MODEL=nomic-embed-text
+OLLAMA_EMBED_MODEL=nomic-embed-text
+OLLAMA_GEN_MODEL=qwen2.5-coder:3b
 "#;
     fs::write(docker_dir.join(".env.example"), env_example).await?;
 
