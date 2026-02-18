@@ -1,5 +1,27 @@
 services:
   # ===========================================
+  # REDIS STACK - Primary Data Store
+  # ===========================================
+  redis:
+    image: redis/redis-stack:latest
+    container_name: cwa-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_INSIGHT_PORT:-8001}:8001"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --appendfsync everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - cwa-network
+    restart: unless-stopped
+
+  # ===========================================
   # NEO4J - Knowledge Graph
   # ===========================================
   neo4j:
@@ -80,6 +102,7 @@ networks:
     driver: bridge
 
 volumes:
+  redis-data:
   neo4j-data:
   neo4j-logs:
   qdrant-data:

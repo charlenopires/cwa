@@ -118,10 +118,10 @@ pub struct ClearArgs {
 }
 
 pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
-    let db_path = project_dir.join(".cwa/cwa.db");
-    let pool = cwa_db::init_pool(&db_path)?;
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let pool = cwa_db::init_pool(&redis_url).await?;
 
-    let project = cwa_core::project::get_default_project(&pool)?
+    let project = cwa_core::project::get_default_project(&pool).await?
         .ok_or_else(|| anyhow::anyhow!("No project found. Run 'cwa init' first."))?;
 
     match cmd {
@@ -139,7 +139,7 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
                 args.description.as_deref(),
                 &args.priority,
                 criteria,
-            )?;
+            ).await?;
 
             println!(
                 "{} Created spec: {} ({})",
@@ -196,7 +196,7 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
                 &project.id,
                 &input,
                 &args.priority,
-            )?;
+            ).await?;
 
             println!(
                 "{} Created {} spec(s):\n",
@@ -224,7 +224,7 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
                 &project.id,
                 &args.spec,
                 &args.criteria,
-            )?;
+            ).await?;
 
             println!(
                 "{} Added {} criteria to spec '{}' (total: {})",
@@ -236,28 +236,28 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
         }
 
         SpecCommands::List => {
-            let specs = cwa_core::spec::list_specs(&pool, &project.id)?;
+            let specs = cwa_core::spec::list_specs(&pool, &project.id).await?;
             output::print_specs_table(&specs);
         }
 
         SpecCommands::Get(args) => {
-            let spec = cwa_core::spec::get_spec(&pool, &project.id, &args.id)?;
+            let spec = cwa_core::spec::get_spec(&pool, &project.id, &args.id).await?;
             output::print_spec(&spec);
         }
 
         SpecCommands::Status(args) => {
             if let Some(spec_name) = args.spec {
-                let spec = cwa_core::spec::get_spec(&pool, &project.id, &spec_name)?;
+                let spec = cwa_core::spec::get_spec(&pool, &project.id, &spec_name).await?;
                 output::print_spec(&spec);
             } else {
-                let specs = cwa_core::spec::list_specs(&pool, &project.id)?;
+                let specs = cwa_core::spec::list_specs(&pool, &project.id).await?;
                 output::print_specs_table(&specs);
             }
         }
 
         SpecCommands::Validate(args) => {
-            let spec = cwa_core::spec::get_spec(&pool, &project.id, &args.spec)?;
-            let result = cwa_core::spec::validate_spec(&pool, &spec.id)?;
+            let spec = cwa_core::spec::get_spec(&pool, &project.id, &args.spec).await?;
+            let result = cwa_core::spec::validate_spec(&pool, &spec.id).await?;
 
             if result.is_valid {
                 println!("{} Spec is valid", "✓".green().bold());
@@ -270,7 +270,7 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
         }
 
         SpecCommands::Archive(args) => {
-            cwa_core::spec::archive_spec(&pool, &args.spec_id)?;
+            cwa_core::spec::archive_spec(&pool, &args.spec_id).await?;
             println!(
                 "{} Archived spec: {}",
                 "✓".green().bold(),
@@ -280,7 +280,7 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
 
         SpecCommands::Clear(args) => {
             if !args.confirm {
-                let specs = cwa_core::spec::list_specs(&pool, &project.id)?;
+                let specs = cwa_core::spec::list_specs(&pool, &project.id).await?;
                 if specs.is_empty() {
                     println!("{} No specs to clear.", "⊙".blue().bold());
                     return Ok(());
@@ -294,7 +294,7 @@ pub async fn execute(cmd: SpecCommands, project_dir: &Path) -> Result<()> {
                 return Ok(());
             }
 
-            let count = cwa_core::spec::clear_specs(&pool, &project.id)?;
+            let count = cwa_core::spec::clear_specs(&pool, &project.id).await?;
             println!(
                 "{} Cleared {} spec(s).",
                 "✓".green().bold(),

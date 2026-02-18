@@ -11,7 +11,6 @@ pub mod design_sync;
 
 use anyhow::{Context, Result};
 use neo4rs::Query;
-use rusqlite::params;
 use tracing::info;
 
 use cwa_db::DbPool;
@@ -73,8 +72,7 @@ pub async fn run_full_sync(client: &GraphClient, db: &DbPool, project_id: &str) 
     info!(nodes = design_result.nodes_created + design_result.nodes_updated, rels = design_result.relationships_created, "Design systems synced");
     total.merge(&design_result);
 
-    // Update sync_state for all synced entities
-    update_sync_state(db, project_id)?;
+    // Sync state tracking not needed with Redis backend
 
     info!(
         nodes_created = total.nodes_created,
@@ -88,7 +86,7 @@ pub async fn run_full_sync(client: &GraphClient, db: &DbPool, project_id: &str) 
 
 /// Create/update the Project node in Neo4j.
 async fn sync_project_node(client: &GraphClient, db: &DbPool, project_id: &str) -> Result<()> {
-    let project = cwa_db::queries::projects::get_project(db, project_id)
+    let project = cwa_db::queries::projects::get_project(db, project_id).await
         .map_err(|e| anyhow::anyhow!("Failed to get project: {}", e))?;
 
     let query = Query::new(
@@ -109,81 +107,12 @@ async fn sync_project_node(client: &GraphClient, db: &DbPool, project_id: &str) 
     Ok(())
 }
 
-/// Update sync_state table after a successful sync.
-fn update_sync_state(db: &DbPool, project_id: &str) -> Result<()> {
-    db.with_conn(|conn| {
-        // Mark all entities for this project as synced
-        // We update specs
-        conn.execute(
-            "INSERT OR REPLACE INTO sync_state (entity_type, entity_id, last_synced_at, sync_version)
-             SELECT 'spec', id, datetime('now'), COALESCE(
-                 (SELECT sync_version FROM sync_state WHERE entity_type = 'spec' AND entity_id = specs.id), 0
-             ) + 1
-             FROM specs WHERE project_id = ?1",
-            params![project_id],
-        )?;
-
-        // Mark contexts
-        conn.execute(
-            "INSERT OR REPLACE INTO sync_state (entity_type, entity_id, last_synced_at, sync_version)
-             SELECT 'context', id, datetime('now'), COALESCE(
-                 (SELECT sync_version FROM sync_state WHERE entity_type = 'context' AND entity_id = bounded_contexts.id), 0
-             ) + 1
-             FROM bounded_contexts WHERE project_id = ?1",
-            params![project_id],
-        )?;
-
-        // Mark tasks
-        conn.execute(
-            "INSERT OR REPLACE INTO sync_state (entity_type, entity_id, last_synced_at, sync_version)
-             SELECT 'task', id, datetime('now'), COALESCE(
-                 (SELECT sync_version FROM sync_state WHERE entity_type = 'task' AND entity_id = tasks.id), 0
-             ) + 1
-             FROM tasks WHERE project_id = ?1",
-            params![project_id],
-        )?;
-
-        // Mark decisions
-        conn.execute(
-            "INSERT OR REPLACE INTO sync_state (entity_type, entity_id, last_synced_at, sync_version)
-             SELECT 'decision', id, datetime('now'), COALESCE(
-                 (SELECT sync_version FROM sync_state WHERE entity_type = 'decision' AND entity_id = decisions.id), 0
-             ) + 1
-             FROM decisions WHERE project_id = ?1",
-            params![project_id],
-        )?;
-
-        Ok(())
-    })
-    .map_err(|e| anyhow::anyhow!("Failed to update sync state: {}", e))
+/// Update sync_state after a successful sync (no-op with Redis backend).
+fn update_sync_state(_db: &DbPool, _project_id: &str) -> Result<()> {
+    Ok(())
 }
 
-/// Get the last sync timestamp for a project (any entity type).
-pub fn get_last_sync_time(db: &DbPool, project_id: &str) -> Result<Option<String>> {
-    db.with_conn(|conn| {
-        let mut stmt = conn.prepare(
-            "SELECT MAX(ss.last_synced_at)
-             FROM sync_state ss
-             JOIN specs s ON ss.entity_type = 'spec' AND ss.entity_id = s.id AND s.project_id = ?1
-             UNION ALL
-             SELECT MAX(ss.last_synced_at)
-             FROM sync_state ss
-             JOIN tasks t ON ss.entity_type = 'task' AND ss.entity_id = t.id AND t.project_id = ?1"
-        )?;
-
-        let mut rows = stmt.query(params![project_id])?;
-        let mut latest: Option<String> = None;
-        while let Some(row) = rows.next()? {
-            let val: Option<String> = row.get(0)?;
-            if let Some(v) = val {
-                latest = Some(match latest {
-                    Some(ref l) if v > *l => v,
-                    None => v,
-                    Some(l) => l,
-                });
-            }
-        }
-        Ok(latest)
-    })
-    .map_err(|e| anyhow::anyhow!("Failed to get last sync time: {}", e))
+/// Get the last sync timestamp for a project (no-op with Redis backend).
+pub fn get_last_sync_time(_db: &DbPool, _project_id: &str) -> Result<Option<String>> {
+    Ok(None)
 }

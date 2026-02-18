@@ -99,10 +99,10 @@ pub struct WipSetArgs {
 }
 
 pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
-    let db_path = project_dir.join(".cwa/cwa.db");
-    let pool = cwa_db::init_pool(&db_path)?;
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let pool = cwa_db::init_pool(&redis_url).await?;
 
-    let project = cwa_core::project::get_default_project(&pool)?
+    let project = cwa_core::project::get_default_project(&pool).await?
         .ok_or_else(|| anyhow::anyhow!("No project found. Run 'cwa init' first."))?;
 
     match cmd {
@@ -114,7 +114,7 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                 args.description.as_deref(),
                 args.spec.as_deref(),
                 &args.priority,
-            )?;
+            ).await?;
 
             // Notify web server for live reload
             let notifier = cwa_core::WebNotifier::new();
@@ -129,7 +129,7 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
         }
 
         TaskCommands::Generate(args) => {
-            let spec = cwa_core::spec::get_spec(&pool, &project.id, &args.spec)?;
+            let spec = cwa_core::spec::get_spec(&pool, &project.id, &args.spec).await?;
 
             if spec.acceptance_criteria.is_empty() {
                 println!(
@@ -142,7 +142,7 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
 
             if args.dry_run {
                 // Check existing tasks for skip count
-                let existing_tasks = cwa_core::task::list_tasks_by_spec(&pool, &spec.id)?;
+                let existing_tasks = cwa_core::task::list_tasks_by_spec(&pool, &spec.id).await?;
                 let existing_titles: Vec<&str> = existing_tasks.iter().map(|t| t.title.as_str()).collect();
 
                 let new_criteria: Vec<&String> = spec.acceptance_criteria.iter()
@@ -188,7 +188,7 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
             // If using prefix, we need to update the spec's criteria temporarily
             // Instead, we'll just create tasks directly with the prefixed titles
             if args.prefix.is_some() {
-                let existing_tasks = cwa_core::task::list_tasks_by_spec(&pool, &spec.id)?;
+                let existing_tasks = cwa_core::task::list_tasks_by_spec(&pool, &spec.id).await?;
                 let existing_titles: Vec<String> = existing_tasks.iter().map(|t| t.title.clone()).collect();
 
                 let mut created = 0;
@@ -207,10 +207,10 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                         None,
                         Some(&spec.id),
                         spec.priority.as_str(),
-                    )?;
+                    ).await?;
 
                     if args.status != "backlog" {
-                        cwa_core::task::move_task(&pool, &project.id, &task.id, &args.status)?;
+                        cwa_core::task::move_task(&pool, &project.id, &task.id, &args.status).await?;
                     }
 
                     created += 1;
@@ -240,7 +240,7 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                     &project.id,
                     &args.spec,
                     &args.status,
-                )?;
+                ).await?;
 
                 if result.created.is_empty() && result.skipped > 0 {
                     println!(
@@ -275,7 +275,7 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
         }
 
         TaskCommands::Move(args) => {
-            cwa_core::task::move_task(&pool, &project.id, &args.task_id, &args.status)?;
+            cwa_core::task::move_task(&pool, &project.id, &args.task_id, &args.status).await?;
 
             // Notify web server for live reload
             let notifier = cwa_core::WebNotifier::new();
@@ -290,17 +290,17 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
         }
 
         TaskCommands::List => {
-            let tasks = cwa_core::task::list_tasks(&pool, &project.id)?;
+            let tasks = cwa_core::task::list_tasks(&pool, &project.id).await?;
             output::print_tasks_table(&tasks);
         }
 
         TaskCommands::Board => {
-            let board = cwa_core::task::get_board(&pool, &project.id)?;
+            let board = cwa_core::task::get_board(&pool, &project.id).await?;
             output::print_board(&board);
         }
 
         TaskCommands::Wip => {
-            let wip = cwa_core::task::get_wip_status(&pool, &project.id)?;
+            let wip = cwa_core::task::get_wip_status(&pool, &project.id).await?;
             output::print_wip(&wip);
         }
 
@@ -312,7 +312,7 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                 })?),
             };
 
-            cwa_core::task::set_wip_limit(&pool, &project.id, &args.column, limit)?;
+            cwa_core::task::set_wip_limit(&pool, &project.id, &args.column, limit).await?;
 
             match limit {
                 Some(l) => println!(
@@ -331,8 +331,8 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
 
         TaskCommands::Clear(args) => {
             if let Some(spec_id) = &args.spec {
-                let spec = cwa_core::spec::get_spec(&pool, &project.id, spec_id)?;
-                let tasks = cwa_core::task::list_tasks_by_spec(&pool, &spec.id)?;
+                let spec = cwa_core::spec::get_spec(&pool, &project.id, spec_id).await?;
+                let tasks = cwa_core::task::list_tasks_by_spec(&pool, &spec.id).await?;
 
                 if tasks.is_empty() {
                     println!("{} No tasks to clear for spec '{}'.", "⊙".blue().bold(), spec.title.cyan());
@@ -350,7 +350,7 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                     return Ok(());
                 }
 
-                let count = cwa_core::task::clear_tasks_by_spec(&pool, &project.id, spec_id)?;
+                let count = cwa_core::task::clear_tasks_by_spec(&pool, &project.id, spec_id).await?;
 
                 // Notify web server for live reload
                 if count > 0 {
@@ -365,7 +365,7 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                     spec.title.cyan()
                 );
             } else {
-                let tasks = cwa_core::task::list_tasks(&pool, &project.id)?;
+                let tasks = cwa_core::task::list_tasks(&pool, &project.id).await?;
 
                 if tasks.is_empty() {
                     println!("{} No tasks to clear.", "⊙".blue().bold());
@@ -382,7 +382,7 @@ pub async fn execute(cmd: TaskCommands, project_dir: &Path) -> Result<()> {
                     return Ok(());
                 }
 
-                let count = cwa_core::task::clear_all_tasks(&pool, &project.id)?;
+                let count = cwa_core::task::clear_all_tasks(&pool, &project.id).await?;
 
                 // Notify web server for live reload
                 if count > 0 {

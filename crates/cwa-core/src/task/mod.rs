@@ -20,7 +20,7 @@ const DEFAULT_COLUMNS: &[(&str, Option<i64>)] = &[
 ];
 
 /// Create a new task.
-pub fn create_task(
+pub async fn create_task(
     pool: &DbPool,
     project_id: &str,
     title: &str,
@@ -30,39 +30,39 @@ pub fn create_task(
 ) -> CwaResult<Task> {
     let id = Uuid::new_v4().to_string();
 
-    queries::create_task(pool, &id, project_id, title, description, spec_id, priority)?;
+    queries::create_task(pool, &id, project_id, title, description, spec_id, priority).await?;
 
-    let row = queries::get_task(pool, &id)?;
+    let row = queries::get_task(pool, &id).await?;
     Ok(Task::from_row(row))
 }
 
 /// Get a task by ID.
-pub fn get_task(pool: &DbPool, id: &str) -> CwaResult<Task> {
-    let row = queries::get_task(pool, id)?;
+pub async fn get_task(pool: &DbPool, id: &str) -> CwaResult<Task> {
+    let row = queries::get_task(pool, id).await?;
     Ok(Task::from_row(row))
 }
 
 /// Get the current in-progress task.
-pub fn get_current_task(pool: &DbPool, project_id: &str) -> CwaResult<Option<Task>> {
-    let row = queries::get_current_task(pool, project_id)?;
+pub async fn get_current_task(pool: &DbPool, project_id: &str) -> CwaResult<Option<Task>> {
+    let row = queries::get_current_task(pool, project_id).await?;
     Ok(row.map(Task::from_row))
 }
 
 /// List all tasks for a project.
-pub fn list_tasks(pool: &DbPool, project_id: &str) -> CwaResult<Vec<Task>> {
-    let rows = queries::list_tasks(pool, project_id)?;
+pub async fn list_tasks(pool: &DbPool, project_id: &str) -> CwaResult<Vec<Task>> {
+    let rows = queries::list_tasks(pool, project_id).await?;
     Ok(rows.into_iter().map(Task::from_row).collect())
 }
 
 /// List tasks linked to a specific spec.
-pub fn list_tasks_by_spec(pool: &DbPool, spec_id: &str) -> CwaResult<Vec<Task>> {
-    let rows = queries::list_tasks_by_spec(pool, spec_id)?;
+pub async fn list_tasks_by_spec(pool: &DbPool, spec_id: &str) -> CwaResult<Vec<Task>> {
+    let rows = queries::list_tasks_by_spec(pool, spec_id).await?;
     Ok(rows.into_iter().map(Task::from_row).collect())
 }
 
 /// Move a task to a new status.
-pub fn move_task(pool: &DbPool, project_id: &str, task_id: &str, new_status: &str) -> CwaResult<()> {
-    let task = queries::get_task(pool, task_id)?;
+pub async fn move_task(pool: &DbPool, project_id: &str, task_id: &str, new_status: &str) -> CwaResult<()> {
+    let task = queries::get_task(pool, task_id).await?;
     let current_status = TaskStatus::from_str(&task.status);
     let target_status = TaskStatus::from_str(new_status);
 
@@ -75,8 +75,8 @@ pub fn move_task(pool: &DbPool, project_id: &str, task_id: &str, new_status: &st
     }
 
     // Check WIP limit
-    if let Some(limit) = queries::get_wip_limit(pool, project_id, new_status)? {
-        let current_count = queries::count_tasks_by_status(pool, project_id, new_status)?;
+    if let Some(limit) = queries::get_wip_limit(pool, project_id, new_status).await? {
+        let current_count = queries::count_tasks_by_status(pool, project_id, new_status).await?;
         if current_count >= limit {
             return Err(CwaError::WipLimitExceeded {
                 column: new_status.to_string(),
@@ -86,17 +86,17 @@ pub fn move_task(pool: &DbPool, project_id: &str, task_id: &str, new_status: &st
         }
     }
 
-    queries::update_task_status(pool, task_id, new_status)?;
+    queries::update_task_status(pool, task_id, new_status).await?;
     Ok(())
 }
 
 /// Get the Kanban board for a project.
-pub fn get_board(pool: &DbPool, project_id: &str) -> CwaResult<Board> {
-    let tasks = queries::list_tasks(pool, project_id)?;
+pub async fn get_board(pool: &DbPool, project_id: &str) -> CwaResult<Board> {
+    let tasks = queries::list_tasks(pool, project_id).await?;
 
     let mut columns = Vec::new();
     for (name, default_limit) in DEFAULT_COLUMNS {
-        let wip_limit = queries::get_wip_limit(pool, project_id, name)?
+        let wip_limit = queries::get_wip_limit(pool, project_id, name).await?
             .or(*default_limit);
 
         let column_tasks: Vec<Task> = tasks
@@ -117,13 +117,13 @@ pub fn get_board(pool: &DbPool, project_id: &str) -> CwaResult<Board> {
 }
 
 /// Get WIP status for a project.
-pub fn get_wip_status(pool: &DbPool, project_id: &str) -> CwaResult<WipStatus> {
+pub async fn get_wip_status(pool: &DbPool, project_id: &str) -> CwaResult<WipStatus> {
     let mut columns = Vec::new();
 
     for (name, default_limit) in DEFAULT_COLUMNS {
-        let wip_limit = queries::get_wip_limit(pool, project_id, name)?
+        let wip_limit = queries::get_wip_limit(pool, project_id, name).await?
             .or(*default_limit);
-        let current_count = queries::count_tasks_by_status(pool, project_id, name)?;
+        let current_count = queries::count_tasks_by_status(pool, project_id, name).await?;
 
         columns.push(model::ColumnWipStatus {
             name: name.to_string(),
@@ -147,14 +147,14 @@ pub struct GenerateResult {
 ///
 /// Creates one task per acceptance criterion, skipping criteria that already
 /// have a matching task (by title comparison).
-pub fn generate_tasks_from_spec(
+pub async fn generate_tasks_from_spec(
     pool: &DbPool,
     project_id: &str,
     spec_id: &str,
     initial_status: &str,
 ) -> CwaResult<GenerateResult> {
     // Fetch the spec
-    let spec = crate::spec::get_spec(pool, project_id, spec_id)?;
+    let spec = crate::spec::get_spec(pool, project_id, spec_id).await?;
 
     if spec.acceptance_criteria.is_empty() {
         return Err(CwaError::ValidationError(
@@ -163,7 +163,7 @@ pub fn generate_tasks_from_spec(
     }
 
     // Fetch existing tasks for this spec to avoid duplicates
-    let existing_tasks = queries::list_tasks_by_spec(pool, &spec.id)?;
+    let existing_tasks = queries::list_tasks_by_spec(pool, &spec.id).await?;
     let existing_titles: Vec<String> = existing_tasks.iter().map(|t| t.title.clone()).collect();
 
     let priority = spec.priority.as_str();
@@ -183,15 +183,15 @@ pub fn generate_tasks_from_spec(
             None,
             Some(&spec.id),
             priority,
-        )?;
+        ).await?;
 
         // Move to initial status if not "backlog"
         if initial_status != "backlog" {
-            move_task(pool, project_id, &task.id, initial_status)?;
+            move_task(pool, project_id, &task.id, initial_status).await?;
         }
 
         created.push(if initial_status != "backlog" {
-            get_task(pool, &task.id)?
+            get_task(pool, &task.id).await?
         } else {
             task
         });
@@ -201,28 +201,28 @@ pub fn generate_tasks_from_spec(
 }
 
 /// Clear all tasks linked to a spec. Returns the number of deleted tasks.
-pub fn clear_tasks_by_spec(pool: &DbPool, project_id: &str, spec_id: &str) -> CwaResult<usize> {
-    let spec = crate::spec::get_spec(pool, project_id, spec_id)?;
-    let count = queries::delete_tasks_by_spec(pool, &spec.id)?;
+pub async fn clear_tasks_by_spec(pool: &DbPool, project_id: &str, spec_id: &str) -> CwaResult<usize> {
+    let spec = crate::spec::get_spec(pool, project_id, spec_id).await?;
+    let count = queries::delete_tasks_by_spec(pool, &spec.id).await?;
     Ok(count)
 }
 
 /// Clear all tasks for a project. Returns the number of deleted tasks.
-pub fn clear_all_tasks(pool: &DbPool, project_id: &str) -> CwaResult<usize> {
-    let count = queries::delete_all_tasks(pool, project_id)?;
+pub async fn clear_all_tasks(pool: &DbPool, project_id: &str) -> CwaResult<usize> {
+    let count = queries::delete_all_tasks(pool, project_id).await?;
     Ok(count)
 }
 
 /// Initialize default Kanban columns for a project.
-pub fn init_kanban_columns(pool: &DbPool, project_id: &str) -> CwaResult<()> {
+pub async fn init_kanban_columns(pool: &DbPool, project_id: &str) -> CwaResult<()> {
     for (i, (name, limit)) in DEFAULT_COLUMNS.iter().enumerate() {
-        queries::set_wip_limit(pool, project_id, name, *limit, i as i32)?;
+        queries::set_wip_limit(pool, project_id, name, *limit, i as i32).await?;
     }
     Ok(())
 }
 
 /// Set WIP limit for a column. Use None to remove limit.
-pub fn set_wip_limit(pool: &DbPool, project_id: &str, column: &str, limit: Option<i64>) -> CwaResult<()> {
+pub async fn set_wip_limit(pool: &DbPool, project_id: &str, column: &str, limit: Option<i64>) -> CwaResult<()> {
     // Validate column name
     let valid_columns: Vec<&str> = DEFAULT_COLUMNS.iter().map(|(name, _)| *name).collect();
     if !valid_columns.contains(&column) {
@@ -239,6 +239,6 @@ pub fn set_wip_limit(pool: &DbPool, project_id: &str, column: &str, limit: Optio
         .position(|(name, _)| *name == column)
         .unwrap() as i32;
 
-    queries::set_wip_limit(pool, project_id, column, limit, order)?;
+    queries::set_wip_limit(pool, project_id, column, limit, order).await?;
     Ok(())
 }

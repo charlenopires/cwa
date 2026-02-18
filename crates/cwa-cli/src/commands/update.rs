@@ -20,10 +20,10 @@ pub struct UpdateArgs {
 }
 
 pub async fn execute(args: UpdateArgs, project_dir: &Path) -> Result<()> {
-    let db_path = project_dir.join(".cwa/cwa.db");
-    let pool = cwa_db::init_pool(&db_path)?;
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let pool = cwa_db::init_pool(&redis_url).await?;
 
-    let project = cwa_core::project::get_default_project(&pool)?
+    let project = cwa_core::project::get_default_project(&pool).await?
         .ok_or_else(|| anyhow::anyhow!("No project found. Run 'cwa init' first."))?;
 
     println!(
@@ -33,7 +33,7 @@ pub async fn execute(args: UpdateArgs, project_dir: &Path) -> Result<()> {
     );
 
     // Get existing info for defaults
-    let existing = cwa_core::project::get_project_info(&pool, &project.id)?;
+    let existing = cwa_core::project::get_project_info(&pool, &project.id).await?;
 
     let info = if args.regenerate_only {
         // Use existing info or create minimal
@@ -50,7 +50,7 @@ pub async fn execute(args: UpdateArgs, project_dir: &Path) -> Result<()> {
     };
 
     // Save project info
-    cwa_core::project::set_project_info(&pool, &project.id, &info)?;
+    cwa_core::project::set_project_info(&pool, &project.id, &info).await?;
 
     // Update project basic fields if name/description changed
     let current_desc = project.description.clone().unwrap_or_default();
@@ -60,13 +60,13 @@ pub async fn execute(args: UpdateArgs, project_dir: &Path) -> Result<()> {
             &project.id,
             &info.name,
             Some(&info.description),
-        )?;
+        ).await?;
     }
 
     println!("{} Project info saved", "✓".green().bold());
 
     if !args.no_regen {
-        regenerate_all(&pool, &project.id, project_dir)?;
+        regenerate_all(&pool, &project.id, project_dir).await?;
     }
 
     println!(
@@ -187,16 +187,16 @@ fn collect_list(prompt: &str, existing: &[String]) -> Result<Vec<String>> {
     Ok(items)
 }
 
-fn regenerate_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path) -> Result<()> {
+async fn regenerate_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path) -> Result<()> {
     println!("\n{} Regenerating context files...", "→".blue().bold());
 
     // 1. CLAUDE.md
-    let claude_md = cwa_codegen::generate_claude_md(pool, project_id)?;
+    let claude_md = cwa_codegen::generate_claude_md(pool, project_id).await?;
     cwa_codegen::write_claude_md(&claude_md, project_dir)?;
     println!("  {} CLAUDE.md", "✓".green());
 
     // 2. Agents
-    let agents = cwa_codegen::generate_all_agents(pool, project_id)?;
+    let agents = cwa_codegen::generate_all_agents(pool, project_id).await?;
     if !agents.is_empty() {
         let output_dir = project_dir.join(".claude/agents");
         cwa_codegen::write_agents(&agents, &output_dir)?;
@@ -204,7 +204,7 @@ fn regenerate_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path) -
     }
 
     // 3. Skills
-    let skills = cwa_codegen::generate_all_skills(pool, project_id)?;
+    let skills = cwa_codegen::generate_all_skills(pool, project_id).await?;
     if !skills.is_empty() {
         let output_dir = project_dir.join(".claude/skills");
         cwa_codegen::write_skills(&skills, &output_dir)?;
@@ -218,7 +218,7 @@ fn regenerate_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path) -
     println!("  {} {} commands", "✓".green(), commands.len());
 
     // 5. Hooks
-    let hooks = cwa_codegen::generate_hooks(pool, project_id)?;
+    let hooks = cwa_codegen::generate_hooks(pool, project_id).await?;
     cwa_codegen::write_hooks(&hooks, project_dir)?;
     println!("  {} hooks.json", "✓".green());
 

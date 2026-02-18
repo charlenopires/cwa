@@ -26,8 +26,9 @@ pub struct ServeArgs {
 }
 
 pub async fn execute(args: ServeArgs, project_dir: &Path) -> Result<()> {
-    let db_path = project_dir.join(".cwa/cwa.db");
-    let pool = Arc::new(cwa_db::init_pool(&db_path)?);
+    let redis_url = std::env::var("REDIS_URL")
+        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let pool = Arc::new(cwa_db::init_pool(&redis_url).await?);
 
     // Create shared broadcast channel for real-time updates
     let tx = cwa_db::create_broadcast_channel();

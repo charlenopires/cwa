@@ -119,17 +119,17 @@ pub enum McpCommands {
 }
 
 pub async fn execute(cmd: McpCommands, project_dir: &Path) -> Result<()> {
-    let db_path = project_dir.join(".cwa/cwa.db");
-
     match cmd {
         McpCommands::Stdio => {
-            let pool = Arc::new(cwa_db::init_pool(&db_path)?);
+            let redis_url = std::env::var("REDIS_URL")
+                .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+            let pool = Arc::new(cwa_db::init_pool(&redis_url).await?);
             // Running standalone - no broadcast channel (uses HTTP fallback)
             cwa_mcp::run_stdio_server(pool, None).await?;
         }
 
         McpCommands::Planner => {
-            cwa_mcp::run_planner_stdio().await?;
+            cwa_mcp::run_planner_stdio(project_dir).await?;
         }
 
         McpCommands::Status => {
@@ -137,7 +137,7 @@ pub async fn execute(cmd: McpCommands, project_dir: &Path) -> Result<()> {
         }
 
         McpCommands::Install(args) => {
-            install_mcp_server(args).await?;
+            install_mcp_server(args, project_dir).await?;
         }
 
         McpCommands::Uninstall { target, name, yes } => {
@@ -170,32 +170,29 @@ fn get_config_path(target: McpTarget) -> Option<PathBuf> {
 }
 
 /// Get server configuration for the specified variant
-fn get_server_config(variant: McpServerVariant, target: McpTarget) -> Value {
-    let args = match variant {
-        McpServerVariant::Stdio => vec!["mcp", "stdio"],
-        McpServerVariant::Planner => vec!["mcp", "planner"],
-    };
-
+fn get_server_config(variant: McpServerVariant, _target: McpTarget, project_dir: &Path) -> Value {
     let command = std::env::current_exe()
         .ok()
         .and_then(|p| p.to_str().map(String::from))
         .unwrap_or_else(|| "cwa".to_string());
 
-    // VSCode uses a different format with "servers" key instead of "mcpServers"
-    match target {
-        McpTarget::Vscode | McpTarget::VscodeInsiders => {
-            json!({
-                "command": command,
-                "args": args
-            })
+    let args: Vec<String> = match variant {
+        McpServerVariant::Stdio => {
+            let project_str = project_dir.to_string_lossy().into_owned();
+            vec![
+                "--project".to_string(),
+                project_str,
+                "mcp".to_string(),
+                "stdio".to_string(),
+            ]
         }
-        _ => {
-            json!({
-                "command": command,
-                "args": args
-            })
-        }
-    }
+        McpServerVariant::Planner => vec!["mcp".to_string(), "planner".to_string()],
+    };
+
+    json!({
+        "command": command,
+        "args": args
+    })
 }
 
 /// Get the default server name based on variant
@@ -326,12 +323,13 @@ fn install_to_target(
     variant: McpServerVariant,
     server_name: &str,
     dry_run: bool,
+    project_dir: &Path,
 ) -> Result<InstallResult> {
     let path = get_config_path(target)
         .ok_or_else(|| anyhow::anyhow!("No config path for target"))?;
 
     let mut config = read_or_create_config(&path)?;
-    let server_config = get_server_config(variant, target);
+    let server_config = get_server_config(variant, target, project_dir);
 
     if dry_run {
         println!("\n{} {} ({}):", "Would install to".yellow(), target, path.display());
@@ -392,7 +390,7 @@ fn select_targets_interactively() -> Result<Vec<McpTarget>> {
 }
 
 /// Install MCP server to selected targets
-async fn install_mcp_server(args: InstallArgs) -> Result<()> {
+async fn install_mcp_server(args: InstallArgs, project_dir: &Path) -> Result<()> {
     println!();
     println!("{} CWA MCP Server Installation", "●".cyan().bold());
     println!();
@@ -434,7 +432,7 @@ async fn install_mcp_server(args: InstallArgs) -> Result<()> {
     let mut failed = 0;
 
     for target in &targets {
-        let result = install_to_target(*target, args.variant, server_name, args.dry_run);
+        let result = install_to_target(*target, args.variant, server_name, args.dry_run, project_dir);
 
         match result {
             Ok(InstallResult::Installed) => {
@@ -678,7 +676,7 @@ fn print_mcp_status() {
     "mcpServers": {{
       "cwa": {{
         "command": "cwa",
-        "args": ["mcp", "stdio"]
+        "args": ["--project", "/path/to/your/project", "mcp", "stdio"]
       }}
     }}
   }}"#

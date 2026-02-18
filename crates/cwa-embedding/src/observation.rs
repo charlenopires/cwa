@@ -94,10 +94,10 @@ impl ObservationPipeline {
             facts_json.as_deref(), concepts_json.as_deref(),
             files_mod_json.as_deref(), files_read_json.as_deref(),
             None, None, confidence,
-        ).map_err(|e| anyhow::anyhow!("Failed to store observation: {}", e))?;
+        ).await.map_err(|e| anyhow::anyhow!("Failed to store observation: {}", e))?;
 
         // Update embedding ID
-        cwa_db::queries::observations::update_embedding_id(db, &id, &embedding_id)
+        cwa_db::queries::observations::update_embedding_id(db, &id, &embedding_id).await
             .map_err(|e| anyhow::anyhow!("Failed to update embedding ID: {}", e))?;
 
         // Upsert to Qdrant

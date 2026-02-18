@@ -12,7 +12,7 @@ use super::SyncResult;
 
 /// Sync all design systems for a project to Neo4j.
 pub async fn sync_design_systems(client: &GraphClient, db: &DbPool, project_id: &str) -> Result<SyncResult> {
-    let design_systems = cwa_db::queries::design_systems::list_design_systems(db, project_id)
+    let design_systems = cwa_db::queries::design_systems::list_design_systems(db, project_id).await
         .map_err(|e| anyhow::anyhow!("Failed to list design systems: {}", e))?;
 
     let mut result = SyncResult::default();

@@ -7,13 +7,13 @@ use std::path::PathBuf;
 /// Find a CWA project by searching up the directory tree.
 ///
 /// Starts from the current directory and walks up until it finds a directory
-/// containing `.cwa/cwa.db`. This is used by MCP commands which may be
+/// containing a `.cwa/` directory. This is used by MCP commands which may be
 /// executed by Claude Desktop from "/" or other system directories.
 fn find_cwa_project() -> Result<PathBuf> {
     let mut dir = std::env::current_dir().context("Failed to get current directory")?;
 
     loop {
-        if dir.join(".cwa/cwa.db").exists() {
+        if dir.join(".cwa").is_dir() {
             return Ok(dir);
         }
         if !dir.pop() {

@@ -117,12 +117,12 @@ pub struct MoveCardForm {
 /// GET / - Redirect to the default board.
 pub async fn index(State(state): State<AppState>) -> Response {
     // Find the default project and board
-    let project = match cwa_db::queries::projects::get_default_project(&state.db) {
+    let project = match cwa_db::queries::projects::get_default_project(&state.db).await {
         Ok(Some(p)) => p,
         Ok(None) | Err(_) => return (StatusCode::NOT_FOUND, Html("No project found. Run 'cwa init' first.".to_string())).into_response(),
     };
 
-    let board = match board::get_or_create_default_board(&state.db, &project.id) {
+    let board = match board::get_or_create_default_board(&state.db, &project.id).await {
         Ok(b) => b,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Html(format!("Error: {}", e))).into_response(),
     };
@@ -140,7 +140,7 @@ pub async fn get_board(
     State(state): State<AppState>,
     Path(board_id): Path<String>,
 ) -> Response {
-    let board = match board::get_board(&state.db, &board_id) {
+    let board = match board::get_board(&state.db, &board_id).await {
         Ok(b) => b,
         Err(_) => return (StatusCode::NOT_FOUND, Html("Board not found".to_string())).into_response(),
     };
@@ -175,7 +175,7 @@ pub async fn create_card(
         description,
         priority,
         due_date,
-    ) {
+    ).await {
         return (StatusCode::BAD_REQUEST, Html(format!("Error: {}", e))).into_response();
     }
 
@@ -190,19 +190,19 @@ pub async fn move_card(
     Form(form): Form<MoveCardForm>,
 ) -> Response {
     // Get the card to find its board
-    let card = match cwa_db::queries::boards::get_card(&state.db, &card_id) {
+    let card = match cwa_db::queries::boards::get_card(&state.db, &card_id).await {
         Ok(c) => c,
         Err(_) => return (StatusCode::NOT_FOUND, Html("Card not found".to_string())).into_response(),
     };
 
-    if let Err(e) = board::move_card(&state.db, &card_id, &form.target_column_id, form.position) {
+    if let Err(e) = board::move_card(&state.db, &card_id, &form.target_column_id, form.position).await {
         return (StatusCode::BAD_REQUEST, Html(format!("Error: {}", e))).into_response();
     }
 
     state.broadcast(WebSocketMessage::BoardRefresh);
 
     // Find board_id from column
-    let column = match cwa_db::queries::boards::get_column(&state.db, &card.column_id) {
+    let column = match cwa_db::queries::boards::get_column(&state.db, &card.column_id).await {
         Ok(c) => c,
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Html("Column not found".to_string())).into_response(),
     };
@@ -216,17 +216,17 @@ pub async fn delete_card(
     Path(card_id): Path<String>,
 ) -> Response {
     // Get card's column to find board
-    let card = match cwa_db::queries::boards::get_card(&state.db, &card_id) {
+    let card = match cwa_db::queries::boards::get_card(&state.db, &card_id).await {
         Ok(c) => c,
         Err(_) => return (StatusCode::NOT_FOUND, Html("Card not found".to_string())).into_response(),
     };
 
-    let column = match cwa_db::queries::boards::get_column(&state.db, &card.column_id) {
+    let column = match cwa_db::queries::boards::get_column(&state.db, &card.column_id).await {
         Ok(c) => c,
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Html("Column not found".to_string())).into_response(),
     };
 
-    if let Err(e) = board::delete_card(&state.db, &card_id) {
+    if let Err(e) = board::delete_card(&state.db, &card_id).await {
         return (StatusCode::INTERNAL_SERVER_ERROR, Html(format!("Error: {}", e))).into_response();
     }
 
@@ -240,7 +240,7 @@ pub async fn delete_card(
 
 /// Render just the board columns HTML (for HTMX swaps after mutations).
 async fn render_board_columns(state: &AppState, board_id: &str) -> Response {
-    let board = match board::get_board(&state.db, board_id) {
+    let board = match board::get_board(&state.db, board_id).await {
         Ok(b) => b,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Html(format!("Error: {}", e))).into_response(),
     };

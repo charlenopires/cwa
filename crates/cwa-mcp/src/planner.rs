@@ -40,7 +40,19 @@ struct JsonRpcResponse {
 
 /// Run the MCP planner server over stdio.
 /// Exposes only the `cwa_plan_software` tool for Claude Desktop.
-pub async fn run_planner_stdio() -> anyhow::Result<()> {
+///
+/// If `project_dir` contains a valid CWA project (`.cwa/cwa.db`), it is used
+/// as the default project context for `cwa_plan_software` calls when the caller
+/// does not supply an explicit `project_path` argument.
+pub async fn run_planner_stdio(project_dir: &Path) -> anyhow::Result<()> {
+    // Only treat as a valid project if the database file exists.
+    let effective_project: Option<std::path::PathBuf> =
+        if project_dir.join(".cwa/cwa.db").exists() {
+            Some(project_dir.to_path_buf())
+        } else {
+            None
+        };
+
     let stdin = BufReader::new(tokio::io::stdin());
     let mut stdout = tokio::io::stdout();
     let mut lines = stdin.lines();
@@ -74,7 +86,7 @@ pub async fn run_planner_stdio() -> anyhow::Result<()> {
             continue;
         }
 
-        let response = handle_request(request).await;
+        let response = handle_request(request, effective_project.as_deref()).await;
         if write_response(&mut stdout, &response).await.is_err() {
             break;
         }
@@ -94,11 +106,11 @@ async fn write_response(stdout: &mut tokio::io::Stdout, response: &JsonRpcRespon
 // REQUEST ROUTING
 // ============================================================
 
-async fn handle_request(request: JsonRpcRequest) -> JsonRpcResponse {
+async fn handle_request(request: JsonRpcRequest, default_project: Option<&Path>) -> JsonRpcResponse {
     let result = match request.method.as_str() {
         "initialize" => handle_initialize(),
         "tools/list" => handle_tools_list(),
-        "tools/call" => handle_tool_call(request.params).await,
+        "tools/call" => handle_tool_call(request.params, default_project).await,
         _ => Err(JsonRpcError {
             code: -32601,
             message: format!("Method not found: {}", request.method),
@@ -165,6 +177,7 @@ fn handle_tools_list() -> Result<serde_json::Value, JsonRpcError> {
 
 async fn handle_tool_call(
     params: Option<serde_json::Value>,
+    default_project: Option<&Path>,
 ) -> Result<serde_json::Value, JsonRpcError> {
     let params = params.ok_or_else(|| JsonRpcError {
         code: -32602,
@@ -180,7 +193,7 @@ async fn handle_tool_call(
 
     if name == "cwa_plan_software" {
         let args = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
-        return plan_software(&args).await;
+        return plan_software(&args, default_project).await;
     }
 
     // Only cwa_plan_software is available in the planner server
@@ -196,6 +209,7 @@ async fn handle_tool_call(
 
 async fn plan_software(
     args: &serde_json::Value,
+    default_project: Option<&Path>,
 ) -> Result<serde_json::Value, JsonRpcError> {
     let prompt = args["prompt"]
         .as_str()
@@ -204,24 +218,31 @@ async fn plan_software(
             message: "Missing required parameter: prompt".to_string(),
         })?;
 
+    // Resolve the project path: explicit arg takes priority, then server default.
+    let explicit_path = args.get("project_path").and_then(|v| v.as_str()).map(Path::new);
+    let project_path: Option<&Path> = explicit_path.or(default_project);
+
     // Optionally read existing project state
-    let existing_state = if let Some(path_str) = args.get("project_path").and_then(|v| v.as_str()) {
-        let path = Path::new(path_str);
-        match planner_template::read_existing_state(path) {
+    let existing_state = if let Some(path) = project_path {
+        match planner_template::read_existing_state(path).await {
             Ok(state) => Some(state),
             Err(e) => {
-                // Include the error as a note but don't fail
-                return Ok(serde_json::json!({
-                    "content": [{
-                        "type": "text",
-                        "text": format!(
-                            "Note: Could not read existing project at '{}': {}\n\n{}",
-                            path_str,
-                            e,
-                            planner_template::render_planning_document(prompt, None)
-                        )
-                    }]
-                }));
+                if explicit_path.is_some() {
+                    // Explicit path was given but failed — surface the error.
+                    return Ok(serde_json::json!({
+                        "content": [{
+                            "type": "text",
+                            "text": format!(
+                                "Note: Could not read existing project at '{}': {}\n\n{}",
+                                path.display(),
+                                e,
+                                planner_template::render_planning_document(prompt, None)
+                            )
+                        }]
+                    }));
+                }
+                // Default project detection failed silently — just plan without context.
+                None
             }
         }
     } else {

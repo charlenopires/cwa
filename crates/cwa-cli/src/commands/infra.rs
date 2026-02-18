@@ -66,6 +66,7 @@ struct ServiceInfo {
 }
 
 const SERVICES: &[ServiceInfo] = &[
+    ServiceInfo { name: "redis", health_url: "redis://localhost:6379" },
     ServiceInfo { name: "neo4j", health_url: "http://localhost:7474" },
     ServiceInfo { name: "qdrant", health_url: "http://localhost:6333/healthz" },
     ServiceInfo { name: "ollama", health_url: "http://localhost:11434/api/tags" },
@@ -181,6 +182,8 @@ async fn cmd_up(project_dir: &Path) -> Result<()> {
     }
 
     println!("\n{}", "Infrastructure ready.".green().bold());
+    println!("  Redis:         redis://localhost:6379");
+    println!("  RedisInsight:  http://localhost:8001");
     println!("  Neo4j Browser: http://localhost:7474");
     println!("  Qdrant API:    http://localhost:6333");
     println!("  Ollama API:    http://localhost:11434");
@@ -207,7 +210,7 @@ fn cmd_down(project_dir: &Path, clean: bool) -> Result<()> {
 
         // Also remove any orphan containers with cwa- prefix
         let _ = Command::new("docker")
-            .args(["rm", "-f", "cwa-neo4j", "cwa-qdrant", "cwa-ollama"])
+            .args(["rm", "-f", "cwa-redis", "cwa-neo4j", "cwa-qdrant", "cwa-ollama"])
             .status();
 
         println!("{}", "Infrastructure stopped, volumes and images removed.".green());
@@ -295,7 +298,7 @@ fn cmd_logs(project_dir: &Path, service: Option<String>, follow: bool) -> Result
 /// Reset infrastructure (destroy all data).
 fn cmd_reset(project_dir: &Path, confirm: bool) -> Result<()> {
     if !confirm {
-        println!("{}", "This will destroy all Neo4j, Qdrant, and Ollama data!".red().bold());
+        println!("{}", "This will destroy all Redis, Neo4j, Qdrant, and Ollama data!".red().bold());
         println!("Run with {} to confirm.", "--confirm".bold());
         return Ok(());
     }
@@ -336,7 +339,14 @@ async fn wait_for_health(url: &str, timeout_secs: u64) -> bool {
 }
 
 /// Check if a health endpoint responds with 2xx.
+/// For Redis URLs (redis://), uses a TCP connection check instead of HTTP.
 async fn check_health(url: &str) -> bool {
+    if url.starts_with("redis://") {
+        // Parse host:port from redis://host:port
+        let addr = url.trim_start_matches("redis://");
+        return tokio::net::TcpStream::connect(addr).await.is_ok();
+    }
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build();

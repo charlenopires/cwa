@@ -28,6 +28,9 @@ pub const TERMS_COLLECTION: &str = "cwa_terms";
 /// Collection name for observations.
 pub const OBSERVATIONS_COLLECTION: &str = "cwa_observations";
 
+/// Collection name for domain objects.
+pub const DOMAIN_OBJECTS_COLLECTION: &str = "cwa_domain_objects";
+
 /// A search result from Qdrant.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VectorSearchResult {
@@ -90,6 +93,7 @@ impl QdrantStore {
         self.ensure_collection(MEMORIES_COLLECTION).await?;
         self.ensure_collection(TERMS_COLLECTION).await?;
         self.ensure_collection(OBSERVATIONS_COLLECTION).await?;
+        self.ensure_collection(DOMAIN_OBJECTS_COLLECTION).await?;
         Ok(())
     }
 

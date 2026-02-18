@@ -9,7 +9,7 @@ use model::Decision;
 use uuid::Uuid;
 
 /// Create a new decision.
-pub fn create_decision(
+pub async fn create_decision(
     pool: &DbPool,
     project_id: &str,
     title: &str,
@@ -18,45 +18,45 @@ pub fn create_decision(
 ) -> CwaResult<Decision> {
     let id = Uuid::new_v4().to_string();
 
-    queries::create_decision(pool, &id, project_id, title, context, decision)?;
+    queries::create_decision(pool, &id, project_id, title, context, decision).await?;
 
-    let row = queries::get_decision(pool, &id)?;
+    let row = queries::get_decision(pool, &id).await?;
     Ok(Decision::from_row(row))
 }
 
 /// Get a decision by ID.
-pub fn get_decision(pool: &DbPool, id: &str) -> CwaResult<Decision> {
-    let row = queries::get_decision(pool, id)?;
+pub async fn get_decision(pool: &DbPool, id: &str) -> CwaResult<Decision> {
+    let row = queries::get_decision(pool, id).await?;
     Ok(Decision::from_row(row))
 }
 
 /// List all decisions for a project.
-pub fn list_decisions(pool: &DbPool, project_id: &str) -> CwaResult<Vec<Decision>> {
-    let rows = queries::list_decisions(pool, project_id)?;
+pub async fn list_decisions(pool: &DbPool, project_id: &str) -> CwaResult<Vec<Decision>> {
+    let rows = queries::list_decisions(pool, project_id).await?;
     Ok(rows.into_iter().map(Decision::from_row).collect())
 }
 
 /// List accepted decisions.
-pub fn list_accepted_decisions(pool: &DbPool, project_id: &str) -> CwaResult<Vec<Decision>> {
-    let rows = queries::list_accepted_decisions(pool, project_id)?;
+pub async fn list_accepted_decisions(pool: &DbPool, project_id: &str) -> CwaResult<Vec<Decision>> {
+    let rows = queries::list_accepted_decisions(pool, project_id).await?;
     Ok(rows.into_iter().map(Decision::from_row).collect())
 }
 
 /// Accept a decision.
-pub fn accept_decision(pool: &DbPool, id: &str) -> CwaResult<()> {
-    queries::update_decision_status(pool, id, "accepted")?;
+pub async fn accept_decision(pool: &DbPool, id: &str) -> CwaResult<()> {
+    queries::update_decision_status(pool, id, "accepted").await?;
     Ok(())
 }
 
 /// Deprecate a decision.
-pub fn deprecate_decision(pool: &DbPool, id: &str) -> CwaResult<()> {
-    queries::update_decision_status(pool, id, "deprecated")?;
+pub async fn deprecate_decision(pool: &DbPool, id: &str) -> CwaResult<()> {
+    queries::update_decision_status(pool, id, "deprecated").await?;
     Ok(())
 }
 
 /// Supersede a decision with a new one.
-pub fn supersede_decision(pool: &DbPool, old_id: &str, new_id: &str) -> CwaResult<()> {
-    queries::supersede_decision(pool, old_id, new_id)?;
+pub async fn supersede_decision(pool: &DbPool, old_id: &str, new_id: &str) -> CwaResult<()> {
+    queries::supersede_decision(pool, old_id, new_id).await?;
     Ok(())
 }
 

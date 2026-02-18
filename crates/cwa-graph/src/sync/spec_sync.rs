@@ -12,7 +12,7 @@ use super::SyncResult;
 
 /// Sync all specs for a project to Neo4j.
 pub async fn sync_specs(client: &GraphClient, db: &DbPool, project_id: &str) -> Result<SyncResult> {
-    let specs = cwa_db::queries::specs::list_specs(db, project_id)
+    let specs = cwa_db::queries::specs::list_specs(db, project_id).await
         .map_err(|e| anyhow::anyhow!("Failed to list specs: {}", e))?;
 
     let mut result = SyncResult::default();

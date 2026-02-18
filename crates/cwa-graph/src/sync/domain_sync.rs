@@ -19,7 +19,7 @@ pub async fn sync_domain(client: &GraphClient, db: &DbPool, project_id: &str) ->
     let mut result = SyncResult::default();
 
     // Sync bounded contexts
-    let contexts = cwa_db::queries::domains::list_contexts(db, project_id)
+    let contexts = cwa_db::queries::domains::list_contexts(db, project_id).await
         .map_err(|e| anyhow::anyhow!("Failed to list contexts: {}", e))?;
 
     for ctx in &contexts {
@@ -73,7 +73,7 @@ pub async fn sync_domain(client: &GraphClient, db: &DbPool, project_id: &str) ->
         }
 
         // Sync domain objects for this context
-        let objects = cwa_db::queries::domains::list_domain_objects(db, &ctx.id)
+        let objects = cwa_db::queries::domains::list_domain_objects(db, &ctx.id).await
             .map_err(|e| anyhow::anyhow!("Failed to list domain objects: {}", e))?;
 
         for obj in &objects {
@@ -121,7 +121,7 @@ pub async fn sync_domain(client: &GraphClient, db: &DbPool, project_id: &str) ->
     }
 
     // Sync glossary terms
-    let terms = cwa_db::queries::domains::list_glossary(db, project_id)
+    let terms = cwa_db::queries::domains::list_glossary(db, project_id).await
         .map_err(|e| anyhow::anyhow!("Failed to list glossary: {}", e))?;
 
     for term in &terms {

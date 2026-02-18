@@ -753,7 +753,7 @@ pub async fn call_tool(
     let args = params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
 
     // Get default project — execution failure returns isError
-    let project = match cwa_core::project::get_default_project(pool) {
+    let project = match cwa_core::project::get_default_project(pool).await {
         Ok(Some(p)) => p,
         Ok(None) => return Ok(tool_error("No project found. Run 'cwa init' first.")),
         Err(e) => return Ok(tool_error(&format!("Database error: {}", e))),
@@ -761,7 +761,7 @@ pub async fn call_tool(
 
     let result = match name {
         "cwa_get_project_info" => {
-            let info = cwa_core::project::get_project_info(pool, &project.id)
+            let info = cwa_core::project::get_project_info(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -787,7 +787,7 @@ pub async fn call_tool(
         }
 
         "cwa_get_current_task" => {
-            let task = cwa_core::task::get_current_task(pool, &project.id)
+            let task = cwa_core::task::get_current_task(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -805,7 +805,7 @@ pub async fn call_tool(
                 message: "Missing identifier".to_string(),
             })?;
 
-            let spec = cwa_core::spec::get_spec(pool, &project.id, identifier)
+            let spec = cwa_core::spec::get_spec(pool, &project.id, identifier).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -815,7 +815,7 @@ pub async fn call_tool(
         }
 
         "cwa_get_context_summary" => {
-            let summary = cwa_core::memory::get_context_summary(pool, &project.id)
+            let summary = cwa_core::memory::get_context_summary(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -827,7 +827,7 @@ pub async fn call_tool(
         }
 
         "cwa_get_domain_model" => {
-            let model = cwa_core::domain::get_domain_model(pool, &project.id)
+            let model = cwa_core::domain::get_domain_model(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -846,7 +846,7 @@ pub async fn call_tool(
                 message: "Missing status".to_string(),
             })?;
 
-            cwa_core::task::move_task(pool, &project.id, task_id, status)
+            cwa_core::task::move_task(pool, &project.id, task_id, status).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -885,7 +885,7 @@ pub async fn call_tool(
                 message: "Missing decision".to_string(),
             })?;
 
-            let adr = cwa_core::decision::create_decision(pool, &project.id, title, context, decision)
+            let adr = cwa_core::decision::create_decision(pool, &project.id, title, context, decision).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -899,7 +899,7 @@ pub async fn call_tool(
         }
 
         "cwa_get_next_steps" => {
-            let steps = cwa_core::memory::suggest_next_steps(pool, &project.id)
+            let steps = cwa_core::memory::suggest_next_steps(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -916,7 +916,7 @@ pub async fn call_tool(
                 message: "Missing query".to_string(),
             })?;
 
-            let results = cwa_core::memory::search_memory(pool, &project.id, query)
+            let results = cwa_core::memory::search_memory(pool, &project.id, query).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -932,7 +932,7 @@ pub async fn call_tool(
             })?;
             let status = args.get("status").and_then(|v| v.as_str()).unwrap_or("backlog");
 
-            let result = cwa_core::task::generate_tasks_from_spec(pool, &project.id, spec_identifier, status)
+            let result = cwa_core::task::generate_tasks_from_spec(pool, &project.id, spec_identifier, status).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1093,7 +1093,7 @@ pub async fn call_tool(
                         pool, &project.id, obs_type, title, narrative,
                         &facts, &concepts, &files_modified, &[],
                         None, 0.8,
-                    ).map_err(|e| JsonRpcError {
+                    ).await.map_err(|e| JsonRpcError {
                         code: -32603,
                         message: e.to_string(),
                     })?;
@@ -1111,7 +1111,7 @@ pub async fn call_tool(
             let days_back = args.get("days_back").and_then(|v| v.as_i64()).unwrap_or(7);
             let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
 
-            let timeline = cwa_core::memory::get_timeline(pool, &project.id, days_back, limit)
+            let timeline = cwa_core::memory::get_timeline(pool, &project.id, days_back, limit).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1131,7 +1131,7 @@ pub async fn call_tool(
                 .collect();
 
             let id_refs: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-            let observations = cwa_core::memory::get_observations_batch(pool, &id_refs)
+            let observations = cwa_core::memory::get_observations_batch(pool, &id_refs).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1139,7 +1139,7 @@ pub async fn call_tool(
 
             // Boost confidence for accessed items
             for obs in &observations {
-                let _ = cwa_core::memory::boost_confidence(pool, &obs.id, 0.05);
+                let _ = cwa_core::memory::boost_confidence(pool, &obs.id, 0.05).await;
             }
 
             serde_json::json!({ "observations": observations })
@@ -1165,7 +1165,7 @@ pub async fn call_tool(
                 }
                 Err(_) => {
                     // Fallback to text-based search
-                    let memories = cwa_core::memory::search_memory(pool, &project.id, query)
+                    let memories = cwa_core::memory::search_memory(pool, &project.id, query).await
                         .map_err(|e| JsonRpcError {
                             code: -32603,
                             message: e.to_string(),
@@ -1214,7 +1214,7 @@ pub async fn call_tool(
 
         // Listing tools
         "cwa_list_specs" => {
-            let specs = cwa_core::spec::list_specs(pool, &project.id)
+            let specs = cwa_core::spec::list_specs(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1243,18 +1243,18 @@ pub async fn call_tool(
             let spec_filter = args.get("spec_id").and_then(|v| v.as_str());
 
             let tasks = if let Some(spec_id) = spec_filter {
-                let spec = cwa_core::spec::get_spec(pool, &project.id, spec_id)
+                let spec = cwa_core::spec::get_spec(pool, &project.id, spec_id).await
                     .map_err(|e| JsonRpcError {
                         code: -32603,
                         message: e.to_string(),
                     })?;
-                cwa_core::task::list_tasks_by_spec(pool, &spec.id)
+                cwa_core::task::list_tasks_by_spec(pool, &spec.id).await
                     .map_err(|e| JsonRpcError {
                         code: -32603,
                         message: e.to_string(),
                     })?
             } else {
-                cwa_core::task::list_tasks(pool, &project.id)
+                cwa_core::task::list_tasks(pool, &project.id).await
                     .map_err(|e| JsonRpcError {
                         code: -32603,
                         message: e.to_string(),
@@ -1288,13 +1288,13 @@ pub async fn call_tool(
                 message: "Missing status".to_string(),
             })?;
 
-            let spec = cwa_core::spec::get_spec(pool, &project.id, spec_id)
+            let spec = cwa_core::spec::get_spec(pool, &project.id, spec_id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
                 })?;
 
-            cwa_core::spec::update_status(pool, &spec.id, status)
+            cwa_core::spec::update_status(pool, &spec.id, status).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1307,7 +1307,7 @@ pub async fn call_tool(
         }
 
         "cwa_get_glossary" => {
-            let terms = cwa_core::domain::list_glossary(pool, &project.id)
+            let terms = cwa_core::domain::list_glossary(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1330,7 +1330,7 @@ pub async fn call_tool(
             })?;
             let context_id = args.get("context_id").and_then(|v| v.as_str());
 
-            cwa_core::domain::add_glossary_term(pool, &project.id, term, definition, context_id)
+            cwa_core::domain::add_glossary_term(pool, &project.id, term, definition, context_id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1343,7 +1343,7 @@ pub async fn call_tool(
         }
 
         "cwa_get_wip_status" => {
-            let wip_status = cwa_core::task::get_wip_status(pool, &project.id)
+            let wip_status = cwa_core::task::get_wip_status(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1359,7 +1359,7 @@ pub async fn call_tool(
             })?;
             let limit = args.get("limit").and_then(|v| v.as_i64());
 
-            cwa_core::task::set_wip_limit(pool, &project.id, column, limit)
+            cwa_core::task::set_wip_limit(pool, &project.id, column, limit).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1382,13 +1382,13 @@ pub async fn call_tool(
                 message: "Missing spec_id".to_string(),
             })?;
 
-            let spec = cwa_core::spec::get_spec(pool, &project.id, spec_id)
+            let spec = cwa_core::spec::get_spec(pool, &project.id, spec_id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
                 })?;
 
-            let result = cwa_core::spec::validate_spec(pool, &spec.id)
+            let result = cwa_core::spec::validate_spec(pool, &spec.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1411,7 +1411,7 @@ pub async fn call_tool(
                 .filter_map(|v| v.as_str().map(String::from))
                 .collect();
 
-            let spec = cwa_core::spec::add_acceptance_criteria(pool, &project.id, spec_id, &criteria)
+            let spec = cwa_core::spec::add_acceptance_criteria(pool, &project.id, spec_id, &criteria).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1426,7 +1426,7 @@ pub async fn call_tool(
         }
 
         "cwa_get_context_map" => {
-            let context_map = cwa_core::domain::get_context_map(pool, &project.id)
+            let context_map = cwa_core::domain::get_context_map(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1450,20 +1450,40 @@ pub async fn call_tool(
             })?;
             let description = args.get("description").and_then(|v| v.as_str());
 
-            cwa_core::domain::create_domain_object(pool, context_id, name, object_type, description)
+            let obj_id = cwa_core::domain::create_domain_object(pool, context_id, name, object_type, description).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
                 })?;
 
+            // Try to embed (graceful failure if Qdrant/Ollama unavailable)
+            let mut embedded = false;
+            let mut embedding_dim = 0usize;
+            if let Ok(pipeline) = cwa_embedding::DomainObjectPipeline::default_pipeline() {
+                // Look up context name for embedding text
+                let ctx_name = cwa_core::domain::get_context(pool, context_id).await
+                    .map(|c| c.name)
+                    .unwrap_or_else(|_| context_id.to_string());
+                if let Ok(dim) = pipeline.embed_domain_object(
+                    &project.id, &obj_id, name, object_type, &ctx_name,
+                    description.unwrap_or(""),
+                ).await {
+                    embedded = true;
+                    embedding_dim = dim;
+                }
+            }
+
             serde_json::json!({
                 "success": true,
-                "message": format!("Domain object '{}' ({}) created", name, object_type)
+                "id": obj_id,
+                "message": format!("Domain object '{}' ({}) created", name, object_type),
+                "embedded": embedded,
+                "embedding_dim": embedding_dim
             })
         }
 
         "cwa_list_decisions" => {
-            let decisions = cwa_core::decision::list_decisions(pool, &project.id)
+            let decisions = cwa_core::decision::list_decisions(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1483,7 +1503,7 @@ pub async fn call_tool(
             })?;
             let description = args.get("description").and_then(|v| v.as_str());
 
-            let ctx = cwa_core::domain::create_context(pool, &project.id, name, description)
+            let ctx = cwa_core::domain::create_context(pool, &project.id, name, description).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1516,7 +1536,7 @@ pub async fn call_tool(
                 description,
                 priority,
                 criteria.as_deref(),
-            )
+            ).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1539,7 +1559,7 @@ pub async fn call_tool(
             let priority = args.get("priority").and_then(|v| v.as_str()).unwrap_or("medium");
             let spec_id = args.get("spec_id").and_then(|v| v.as_str());
 
-            let task = cwa_core::task::create_task(pool, &project.id, title, description, spec_id, priority)
+            let task = cwa_core::task::create_task(pool, &project.id, title, description, spec_id, priority).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1658,7 +1678,7 @@ pub async fn read_resource(
         message: "Missing uri".to_string(),
     })?;
 
-    let project = cwa_core::project::get_default_project(pool)
+    let project = cwa_core::project::get_default_project(pool).await
         .map_err(|e| JsonRpcError {
             code: -32603,
             message: e.to_string(),
@@ -1670,7 +1690,7 @@ pub async fn read_resource(
 
     let content = match uri {
         "project://info" => {
-            let info = cwa_core::project::get_project_info(pool, &project.id)
+            let info = cwa_core::project::get_project_info(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1687,7 +1707,7 @@ pub async fn read_resource(
         }
 
         "project://constitution" => {
-            cwa_core::project::get_constitution(pool, &project.id)
+            cwa_core::project::get_constitution(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1695,7 +1715,7 @@ pub async fn read_resource(
         }
 
         "project://current-spec" => {
-            let spec = cwa_core::spec::get_active_spec(pool, &project.id)
+            let spec = cwa_core::spec::get_active_spec(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1708,7 +1728,7 @@ pub async fn read_resource(
         }
 
         "project://domain-model" => {
-            let model = cwa_core::domain::get_domain_model(pool, &project.id)
+            let model = cwa_core::domain::get_domain_model(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1718,7 +1738,7 @@ pub async fn read_resource(
         }
 
         "project://kanban-board" => {
-            let board = cwa_core::task::get_board(pool, &project.id)
+            let board = cwa_core::task::get_board(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1728,7 +1748,7 @@ pub async fn read_resource(
         }
 
         "project://decisions" => {
-            let decisions = cwa_core::decision::list_decisions(pool, &project.id)
+            let decisions = cwa_core::decision::list_decisions(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1738,7 +1758,7 @@ pub async fn read_resource(
         }
 
         "project://specs" => {
-            let specs = cwa_core::spec::list_specs(pool, &project.id)
+            let specs = cwa_core::spec::list_specs(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1759,7 +1779,7 @@ pub async fn read_resource(
         }
 
         "project://tasks" => {
-            let tasks = cwa_core::task::list_tasks(pool, &project.id)
+            let tasks = cwa_core::task::list_tasks(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1780,7 +1800,7 @@ pub async fn read_resource(
         }
 
         "project://glossary" => {
-            let terms = cwa_core::domain::list_glossary(pool, &project.id)
+            let terms = cwa_core::domain::list_glossary(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1793,7 +1813,7 @@ pub async fn read_resource(
         }
 
         "project://wip-status" => {
-            let wip_status = cwa_core::task::get_wip_status(pool, &project.id)
+            let wip_status = cwa_core::task::get_wip_status(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),
@@ -1803,7 +1823,7 @@ pub async fn read_resource(
         }
 
         "project://context-map" => {
-            let context_map = cwa_core::domain::get_context_map(pool, &project.id)
+            let context_map = cwa_core::domain::get_context_map(pool, &project.id).await
                 .map_err(|e| JsonRpcError {
                     code: -32603,
                     message: e.to_string(),

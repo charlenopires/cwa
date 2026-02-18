@@ -40,10 +40,10 @@ pub enum GraphCommands {
 }
 
 pub async fn execute(cmd: GraphCommands, project_dir: &Path) -> Result<()> {
-    let db_path = project_dir.join(".cwa/cwa.db");
-    let pool = cwa_db::init_pool(&db_path)?;
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let pool = cwa_db::init_pool(&redis_url).await?;
 
-    let project = cwa_core::project::get_default_project(&pool)?
+    let project = cwa_core::project::get_default_project(&pool).await?
         .ok_or_else(|| anyhow::anyhow!("No project found. Run 'cwa init' first."))?;
 
     // Connect to Neo4j

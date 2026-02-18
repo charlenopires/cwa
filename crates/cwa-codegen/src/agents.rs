@@ -18,14 +18,14 @@ pub struct GeneratedAgent {
 }
 
 /// Generate an agent from a bounded context.
-pub fn generate_agent(db: &DbPool, context_id: &str) -> Result<GeneratedAgent> {
-    let ctx = cwa_db::queries::domains::get_context(db, context_id)
+pub async fn generate_agent(db: &DbPool, context_id: &str) -> Result<GeneratedAgent> {
+    let ctx = cwa_db::queries::domains::get_context(db, context_id).await
         .map_err(|e| anyhow::anyhow!("Context not found: {}", e))?;
 
-    let objects = cwa_db::queries::domains::list_domain_objects(db, context_id)
+    let objects = cwa_db::queries::domains::list_domain_objects(db, context_id).await
         .map_err(|e| anyhow::anyhow!("Failed to list domain objects: {}", e))?;
 
-    let terms = cwa_db::queries::domains::list_glossary(db, &ctx.project_id)
+    let terms = cwa_db::queries::domains::list_glossary(db, &ctx.project_id).await
         .map_err(|e| anyhow::anyhow!("Failed to list glossary: {}", e))?;
 
     // Filter terms for this context
@@ -131,13 +131,13 @@ pub fn generate_agent(db: &DbPool, context_id: &str) -> Result<GeneratedAgent> {
 }
 
 /// Generate agents for all bounded contexts in a project.
-pub fn generate_all_agents(db: &DbPool, project_id: &str) -> Result<Vec<GeneratedAgent>> {
-    let contexts = cwa_db::queries::domains::list_contexts(db, project_id)
+pub async fn generate_all_agents(db: &DbPool, project_id: &str) -> Result<Vec<GeneratedAgent>> {
+    let contexts = cwa_db::queries::domains::list_contexts(db, project_id).await
         .map_err(|e| anyhow::anyhow!("Failed to list contexts: {}", e))?;
 
     let mut agents = Vec::new();
     for ctx in &contexts {
-        agents.push(generate_agent(db, &ctx.id)?);
+        agents.push(generate_agent(db, &ctx.id).await?);
     }
 
     Ok(agents)

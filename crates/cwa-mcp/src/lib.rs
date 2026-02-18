@@ -21,6 +21,10 @@ pub async fn run_stdio_server(
 }
 
 /// Run the MCP planner server over stdio (for Claude Desktop).
-pub async fn run_planner_stdio() -> anyhow::Result<()> {
-    planner::run_planner_stdio().await
+///
+/// `project_dir` is the directory where the command was run. If it contains a
+/// valid CWA project (`.cwa/cwa.db`), it becomes the default context for
+/// `cwa_plan_software` calls that omit `project_path`.
+pub async fn run_planner_stdio(project_dir: &std::path::Path) -> anyhow::Result<()> {
+    planner::run_planner_stdio(project_dir).await
 }

@@ -58,40 +58,40 @@ pub enum CodegenCommands {
 }
 
 pub async fn execute(cmd: CodegenCommands, project_dir: &Path) -> Result<()> {
-    let db_path = project_dir.join(".cwa/cwa.db");
-    let pool = cwa_db::init_pool(&db_path)?;
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let pool = cwa_db::init_pool(&redis_url).await?;
 
-    let project = cwa_core::project::get_default_project(&pool)?
+    let project = cwa_core::project::get_default_project(&pool).await?
         .ok_or_else(|| anyhow::anyhow!("No project found. Run 'cwa init' first."))?;
 
     match cmd {
         CodegenCommands::Agent { context_id, all, dry_run } => {
             if all || context_id.is_none() {
-                cmd_agents_all(&pool, &project.id, project_dir, dry_run)
+                cmd_agents_all(&pool, &project.id, project_dir, dry_run).await
             } else {
-                cmd_agent(&pool, context_id.as_deref().unwrap(), project_dir, dry_run)
+                cmd_agent(&pool, context_id.as_deref().unwrap(), project_dir, dry_run).await
             }
         }
         CodegenCommands::Skill { spec_id, dry_run } => {
-            cmd_skill(&pool, &project.id, &spec_id, project_dir, dry_run)
+            cmd_skill(&pool, &project.id, &spec_id, project_dir, dry_run).await
         }
         CodegenCommands::Hooks { dry_run } => {
-            cmd_hooks(&pool, &project.id, project_dir, dry_run)
+            cmd_hooks(&pool, &project.id, project_dir, dry_run).await
         }
         CodegenCommands::Commands { dry_run } => {
             cmd_commands(project_dir, dry_run)
         }
         CodegenCommands::ClaudeMd { dry_run } => {
-            cmd_claude_md(&pool, &project.id, project_dir, dry_run)
+            cmd_claude_md(&pool, &project.id, project_dir, dry_run).await
         }
         CodegenCommands::All { dry_run } => {
-            cmd_all(&pool, &project.id, project_dir, dry_run)
+            cmd_all(&pool, &project.id, project_dir, dry_run).await
         }
     }
 }
 
-fn cmd_agent(pool: &cwa_db::DbPool, context_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
-    let agent = cwa_codegen::generate_agent(pool, context_id)?;
+async fn cmd_agent(pool: &cwa_db::DbPool, context_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
+    let agent = cwa_codegen::generate_agent(pool, context_id).await?;
 
     if dry_run {
         println!("{} Would generate: .claude/agents/{}", "→".dimmed(), agent.filename);
@@ -106,8 +106,8 @@ fn cmd_agent(pool: &cwa_db::DbPool, context_id: &str, project_dir: &Path, dry_ru
     Ok(())
 }
 
-fn cmd_agents_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
-    let agents = cwa_codegen::generate_all_agents(pool, project_id)?;
+async fn cmd_agents_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
+    let agents = cwa_codegen::generate_all_agents(pool, project_id).await?;
 
     if agents.is_empty() {
         println!("{}", "No bounded contexts found. Create one with 'cwa domain context new'.".dimmed());
@@ -131,8 +131,8 @@ fn cmd_agents_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, d
     Ok(())
 }
 
-fn cmd_skill(pool: &cwa_db::DbPool, project_id: &str, spec_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
-    let skill = cwa_codegen::generate_skill(pool, project_id, spec_id)?;
+async fn cmd_skill(pool: &cwa_db::DbPool, project_id: &str, spec_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
+    let skill = cwa_codegen::generate_skill(pool, project_id, spec_id).await?;
 
     if dry_run {
         println!("{} Would generate: .claude/skills/{}/{}", "→".dimmed(), skill.dirname, skill.filename);
@@ -147,8 +147,8 @@ fn cmd_skill(pool: &cwa_db::DbPool, project_id: &str, spec_id: &str, project_dir
     Ok(())
 }
 
-fn cmd_hooks(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
-    let hooks = cwa_codegen::generate_hooks(pool, project_id)?;
+async fn cmd_hooks(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
+    let hooks = cwa_codegen::generate_hooks(pool, project_id).await?;
 
     if dry_run {
         println!("{} Would generate hooks.json ({} hooks)", "→".dimmed(), hooks.hook_count);
@@ -188,8 +188,8 @@ fn cmd_commands(project_dir: &Path, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
-fn cmd_claude_md(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
-    let generated = cwa_codegen::generate_claude_md(pool, project_id)?;
+async fn cmd_claude_md(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
+    let generated = cwa_codegen::generate_claude_md(pool, project_id).await?;
 
     if dry_run {
         println!("{} Would regenerate CLAUDE.md", "→".dimmed());
@@ -203,11 +203,11 @@ fn cmd_claude_md(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dr
     Ok(())
 }
 
-fn cmd_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
+async fn cmd_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run: bool) -> Result<()> {
     println!("{}", "Generating all artifacts...".bold());
 
     // Agents
-    let agents = cwa_codegen::generate_all_agents(pool, project_id)?;
+    let agents = cwa_codegen::generate_all_agents(pool, project_id).await?;
     if !agents.is_empty() {
         if dry_run {
             println!("  {} agents: {}", agents.len(), agents.iter().map(|a| a.filename.as_str()).collect::<Vec<_>>().join(", "));
@@ -219,7 +219,7 @@ fn cmd_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run:
     }
 
     // Skills
-    let skills = cwa_codegen::generate_all_skills(pool, project_id)?;
+    let skills = cwa_codegen::generate_all_skills(pool, project_id).await?;
     if !skills.is_empty() {
         if dry_run {
             println!("  {} skills: {}", skills.len(), skills.iter().map(|s| s.dirname.as_str()).collect::<Vec<_>>().join(", "));
@@ -241,7 +241,7 @@ fn cmd_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run:
     }
 
     // Hooks
-    let hooks = cwa_codegen::generate_hooks(pool, project_id)?;
+    let hooks = cwa_codegen::generate_hooks(pool, project_id).await?;
     if hooks.hook_count > 0 {
         if dry_run {
             println!("  {} hooks", hooks.hook_count);
@@ -252,7 +252,7 @@ fn cmd_all(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path, dry_run:
     }
 
     // CLAUDE.md
-    let claude_md = cwa_codegen::generate_claude_md(pool, project_id)?;
+    let claude_md = cwa_codegen::generate_claude_md(pool, project_id).await?;
     if dry_run {
         println!("  CLAUDE.md");
     } else {

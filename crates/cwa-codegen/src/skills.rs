@@ -19,8 +19,8 @@ pub struct GeneratedSkill {
 }
 
 /// Generate a skill from a spec.
-pub fn generate_skill(db: &DbPool, project_id: &str, spec_id: &str) -> Result<GeneratedSkill> {
-    let spec = cwa_core::spec::get_spec(db, project_id, spec_id)
+pub async fn generate_skill(db: &DbPool, project_id: &str, spec_id: &str) -> Result<GeneratedSkill> {
+    let spec = cwa_core::spec::get_spec(db, project_id, spec_id).await
         .map_err(|e| anyhow::anyhow!("Spec not found: {}", e))?;
 
     let slug = slugify(&spec.title);
@@ -73,15 +73,15 @@ pub fn generate_skill(db: &DbPool, project_id: &str, spec_id: &str) -> Result<Ge
 }
 
 /// Generate skills for all approved/active specs in a project.
-pub fn generate_all_skills(db: &DbPool, project_id: &str) -> Result<Vec<GeneratedSkill>> {
-    let specs = cwa_db::queries::specs::list_specs(db, project_id)
+pub async fn generate_all_skills(db: &DbPool, project_id: &str) -> Result<Vec<GeneratedSkill>> {
+    let specs = cwa_db::queries::specs::list_specs(db, project_id).await
         .map_err(|e| anyhow::anyhow!("Failed to list specs: {}", e))?;
 
     let mut skills = Vec::new();
     for spec in &specs {
         // Only generate skills for active/approved specs
         if spec.status == "active" || spec.status == "approved" {
-            skills.push(generate_skill(db, project_id, &spec.id)?);
+            skills.push(generate_skill(db, project_id, &spec.id).await?);
         }
     }
 

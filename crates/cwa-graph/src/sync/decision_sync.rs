@@ -15,7 +15,7 @@ use super::SyncResult;
 
 /// Sync all decisions for a project to Neo4j.
 pub async fn sync_decisions(client: &GraphClient, db: &DbPool, project_id: &str) -> Result<SyncResult> {
-    let decisions = cwa_db::queries::decisions::list_decisions(db, project_id)
+    let decisions = cwa_db::queries::decisions::list_decisions(db, project_id).await
         .map_err(|e| anyhow::anyhow!("Failed to list decisions: {}", e))?;
 
     let mut result = SyncResult::default();

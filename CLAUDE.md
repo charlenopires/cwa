@@ -1,6 +1,14 @@
 # CWA
 
-CWA v0.7.0 - Claude Workflow Architect development
+CWA v0.8.0 - Claude Workflow Architect development
+
+## Development Guidelines
+
+**Language: Rust only.** All implementation work must be done directly in Rust.
+- Never use Python, shell scripts, or external tools to manipulate Rust source files
+- Apply changes directly via Edit/Write tools on `.rs` files
+- Refactor, fix, and evolve Rust code idiomatically — use `async fn`, proper error types, Rust ownership patterns
+- Do not use temporary scripts (Python, sed, awk) to patch code; write the correct Rust directly
 
 ## MCP Servers
 

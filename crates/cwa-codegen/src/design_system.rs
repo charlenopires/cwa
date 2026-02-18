@@ -17,8 +17,9 @@ pub struct GeneratedDesignSystem {
 }
 
 /// Generate the design-system.md content from the latest stored design system.
-pub fn generate_design_system_md(db: &DbPool, project_id: &str) -> Result<Option<GeneratedDesignSystem>> {
+pub async fn generate_design_system_md(db: &DbPool, project_id: &str) -> Result<Option<GeneratedDesignSystem>> {
     let row = cwa_db::queries::design_systems::get_latest_design_system(db, project_id)
+        .await
         .map_err(|e| anyhow::anyhow!("Failed to query design system: {}", e))?;
 
     let row = match row {

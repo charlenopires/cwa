@@ -138,10 +138,10 @@ pub struct SummarizeArgs {
 }
 
 pub async fn execute(cmd: MemoryCommands, project_dir: &Path) -> Result<()> {
-    let db_path = project_dir.join(".cwa/cwa.db");
-    let pool = cwa_db::init_pool(&db_path)?;
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let pool = cwa_db::init_pool(&redis_url).await?;
 
-    let project = cwa_core::project::get_default_project(&pool)?
+    let project = cwa_core::project::get_default_project(&pool).await?
         .ok_or_else(|| anyhow::anyhow!("No project found. Run 'cwa init' first."))?;
 
     match cmd {
@@ -149,11 +149,11 @@ pub async fn execute(cmd: MemoryCommands, project_dir: &Path) -> Result<()> {
         MemoryCommands::Search(args) => cmd_search(&pool, &project.id, args).await,
         MemoryCommands::Import => cmd_import(&pool, &project.id).await,
         MemoryCommands::Compact(args) => cmd_compact(&pool, &project.id, args).await,
-        MemoryCommands::Sync => cmd_sync(&pool, &project.id, project_dir),
-        MemoryCommands::Export(args) => cmd_export(&pool, &project.id, args),
+        MemoryCommands::Sync => cmd_sync(&pool, &project.id, project_dir).await,
+        MemoryCommands::Export(args) => cmd_export(&pool, &project.id, args).await,
         MemoryCommands::Observe(args) => cmd_observe(&pool, &project.id, args).await,
-        MemoryCommands::Timeline(args) => cmd_timeline(&pool, &project.id, args),
-        MemoryCommands::Summarize(args) => cmd_summarize(&pool, &project.id, args),
+        MemoryCommands::Timeline(args) => cmd_timeline(&pool, &project.id, args).await,
+        MemoryCommands::Summarize(args) => cmd_summarize(&pool, &project.id, args).await,
     }
 }
 
@@ -186,7 +186,7 @@ async fn cmd_add(pool: &cwa_db::DbPool, project_id: &str, args: AddArgs) -> Resu
 async fn cmd_search(pool: &cwa_db::DbPool, project_id: &str, args: SearchArgs) -> Result<()> {
     if args.legacy {
         // Use the existing text-based search
-        let results = cwa_core::memory::search_memory(pool, project_id, &args.query)?;
+        let results = cwa_core::memory::search_memory(pool, project_id, &args.query).await?;
 
         if results.is_empty() {
             println!("{}", "No results found.".dimmed());
@@ -258,7 +258,7 @@ async fn cmd_import(pool: &cwa_db::DbPool, project_id: &str) -> Result<()> {
 async fn cmd_compact(pool: &cwa_db::DbPool, project_id: &str, args: CompactArgs) -> Result<()> {
     // Apply decay if specified
     if let Some(factor) = args.decay {
-        let decayed = cwa_core::memory::decay_confidence(pool, project_id, factor)?;
+        let decayed = cwa_core::memory::decay_confidence(pool, project_id, factor).await?;
         println!(
             "{} Decayed {} observation confidences by factor {}",
             "✓".green().bold(),
@@ -270,7 +270,7 @@ async fn cmd_compact(pool: &cwa_db::DbPool, project_id: &str, args: CompactArgs)
     // Remove low-confidence observations
     let removed_obs = cwa_core::memory::remove_low_confidence_observations(
         pool, project_id, args.min_confidence,
-    )?;
+    ).await?;
     if !removed_obs.is_empty() {
         println!(
             "{} Removed {} low-confidence observations",
@@ -310,8 +310,8 @@ async fn cmd_compact(pool: &cwa_db::DbPool, project_id: &str, args: CompactArgs)
 }
 
 /// Sync memory with CLAUDE.md.
-fn cmd_sync(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path) -> Result<()> {
-    let summary = cwa_core::memory::get_context_summary(pool, project_id)?;
+async fn cmd_sync(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path) -> Result<()> {
+    let summary = cwa_core::memory::get_context_summary(pool, project_id).await?;
     let content = summary.to_compact_string();
 
     let claude_md_path = project_dir.join("CLAUDE.md");
@@ -322,8 +322,8 @@ fn cmd_sync(pool: &cwa_db::DbPool, project_id: &str, project_dir: &Path) -> Resu
 }
 
 /// Export memory entries.
-fn cmd_export(pool: &cwa_db::DbPool, project_id: &str, args: ExportArgs) -> Result<()> {
-    let entries = cwa_core::memory::list_memory(pool, project_id, Some(100))?;
+async fn cmd_export(pool: &cwa_db::DbPool, project_id: &str, args: ExportArgs) -> Result<()> {
+    let entries = cwa_core::memory::list_memory(pool, project_id, Some(100)).await?;
     let json = serde_json::to_string_pretty(&entries)?;
 
     if let Some(output) = args.output {
@@ -372,7 +372,7 @@ async fn cmd_observe(pool: &cwa_db::DbPool, project_id: &str, args: ObserveArgs)
                 args.narrative.as_deref(), &args.fact, &args.concept,
                 &args.files_modified, &args.files_read,
                 None, args.confidence,
-            )?;
+            ).await?;
 
             println!(
                 "{} Observation recorded (id: {}, no embedding)",
@@ -395,8 +395,8 @@ async fn cmd_observe(pool: &cwa_db::DbPool, project_id: &str, args: ObserveArgs)
 }
 
 /// View observations timeline.
-fn cmd_timeline(pool: &cwa_db::DbPool, project_id: &str, args: TimelineArgs) -> Result<()> {
-    let observations = cwa_core::memory::get_timeline(pool, project_id, args.days, args.limit)?;
+async fn cmd_timeline(pool: &cwa_db::DbPool, project_id: &str, args: TimelineArgs) -> Result<()> {
+    let observations = cwa_core::memory::get_timeline(pool, project_id, args.days, args.limit).await?;
 
     if observations.is_empty() {
         println!("{}", "No observations found.".dimmed());
@@ -446,8 +446,8 @@ fn cmd_timeline(pool: &cwa_db::DbPool, project_id: &str, args: TimelineArgs) -> 
 }
 
 /// Generate a summary from recent observations.
-fn cmd_summarize(pool: &cwa_db::DbPool, project_id: &str, args: SummarizeArgs) -> Result<()> {
-    let observations = cwa_core::memory::get_timeline(pool, project_id, 30, args.count)?;
+async fn cmd_summarize(pool: &cwa_db::DbPool, project_id: &str, args: SummarizeArgs) -> Result<()> {
+    let observations = cwa_core::memory::get_timeline(pool, project_id, 30, args.count).await?;
 
     if observations.is_empty() {
         println!("{}", "No observations to summarize.".dimmed());
@@ -456,7 +456,7 @@ fn cmd_summarize(pool: &cwa_db::DbPool, project_id: &str, args: SummarizeArgs) -
 
     // Collect all facts from the observations (fetch full details)
     let ids: Vec<&str> = observations.iter().map(|o| o.id.as_str()).collect();
-    let full_observations = cwa_core::memory::get_observations_batch(pool, &ids)?;
+    let full_observations = cwa_core::memory::get_observations_batch(pool, &ids).await?;
 
     let mut all_facts: Vec<String> = Vec::new();
     let mut summary_parts: Vec<String> = Vec::new();
@@ -471,7 +471,7 @@ fn cmd_summarize(pool: &cwa_db::DbPool, project_id: &str, args: SummarizeArgs) -
     // Create the summary
     let summary = cwa_core::memory::create_summary(
         pool, project_id, None, &content, &all_facts, full_observations.len() as i64,
-    )?;
+    ).await?;
 
     println!("{} Summary created (id: {})", "✓".green().bold(), summary.id[..8].dimmed());
     println!("  {} {} observations summarized", "•".dimmed(), full_observations.len());

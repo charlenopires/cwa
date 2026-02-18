@@ -16,7 +16,7 @@ use observation::{Observation, ObservationIndex, Summary, ObservationType};
 use uuid::Uuid;
 
 /// Create a memory entry.
-pub fn add_memory(
+pub async fn add_memory(
     pool: &DbPool,
     project_id: &str,
     entry_type: &str,
@@ -25,26 +25,26 @@ pub fn add_memory(
     session_id: Option<&str>,
 ) -> CwaResult<()> {
     let id = Uuid::new_v4().to_string();
-    queries::create_memory_entry(pool, &id, project_id, entry_type, content, importance, session_id)?;
+    queries::create_memory_entry(pool, &id, project_id, entry_type, content, importance, session_id).await?;
     Ok(())
 }
 
 /// List memory entries.
-pub fn list_memory(pool: &DbPool, project_id: &str, limit: Option<i64>) -> CwaResult<Vec<MemoryEntry>> {
-    let rows = queries::list_memory(pool, project_id, limit)?;
+pub async fn list_memory(pool: &DbPool, project_id: &str, limit: Option<i64>) -> CwaResult<Vec<MemoryEntry>> {
+    let rows = queries::list_memory(pool, project_id, limit).await?;
     Ok(rows.into_iter().map(MemoryEntry::from_row).collect())
 }
 
 /// Search memory by query.
-pub fn search_memory(pool: &DbPool, project_id: &str, query: &str) -> CwaResult<Vec<MemoryEntry>> {
-    let rows = queries::search_memory(pool, project_id, query)?;
+pub async fn search_memory(pool: &DbPool, project_id: &str, query: &str) -> CwaResult<Vec<MemoryEntry>> {
+    let rows = queries::search_memory(pool, project_id, query).await?;
     Ok(rows.into_iter().map(MemoryEntry::from_row).collect())
 }
 
 /// Start a new session.
-pub fn start_session(pool: &DbPool, project_id: &str, goals: Option<&str>) -> CwaResult<Session> {
+pub async fn start_session(pool: &DbPool, project_id: &str, goals: Option<&str>) -> CwaResult<Session> {
     let id = Uuid::new_v4().to_string();
-    queries::create_session(pool, &id, project_id, goals)?;
+    queries::create_session(pool, &id, project_id, goals).await?;
 
     Ok(Session {
         id,
@@ -58,33 +58,33 @@ pub fn start_session(pool: &DbPool, project_id: &str, goals: Option<&str>) -> Cw
 }
 
 /// End a session.
-pub fn end_session(pool: &DbPool, id: &str, summary: Option<&str>, accomplishments: Option<&str>) -> CwaResult<()> {
-    queries::end_session(pool, id, summary, accomplishments)?;
+pub async fn end_session(pool: &DbPool, id: &str, summary: Option<&str>, accomplishments: Option<&str>) -> CwaResult<()> {
+    queries::end_session(pool, id, summary, accomplishments).await?;
     Ok(())
 }
 
 /// Get the active session.
-pub fn get_active_session(pool: &DbPool, project_id: &str) -> CwaResult<Option<Session>> {
-    let row = queries::get_active_session(pool, project_id)?;
+pub async fn get_active_session(pool: &DbPool, project_id: &str) -> CwaResult<Option<Session>> {
+    let row = queries::get_active_session(pool, project_id).await?;
     Ok(row.map(Session::from_row))
 }
 
 /// Get a compact context summary for the project.
-pub fn get_context_summary(pool: &DbPool, project_id: &str) -> CwaResult<ContextSummary> {
+pub async fn get_context_summary(pool: &DbPool, project_id: &str) -> CwaResult<ContextSummary> {
     // Get project info
-    let project = project_queries::get_project(pool, project_id)?;
+    let project = project_queries::get_project(pool, project_id).await?;
 
     // Get current task
-    let current_task = task::get_current_task(pool, project_id)?;
+    let current_task = task::get_current_task(pool, project_id).await?;
 
     // Get active spec
-    let active_spec = spec::get_active_spec(pool, project_id)?;
+    let active_spec = spec::get_active_spec(pool, project_id).await?;
 
     // Get recent decisions (accepted only)
-    let decisions = decision::list_accepted_decisions(pool, project_id)?;
+    let decisions = decision::list_accepted_decisions(pool, project_id).await?;
 
     // Get task counts by status
-    let tasks = task::list_tasks(pool, project_id)?;
+    let tasks = task::list_tasks(pool, project_id).await?;
     let task_counts = TaskCounts {
         backlog: tasks.iter().filter(|t| t.status == task::model::TaskStatus::Backlog).count(),
         todo: tasks.iter().filter(|t| t.status == task::model::TaskStatus::Todo).count(),
@@ -94,7 +94,7 @@ pub fn get_context_summary(pool: &DbPool, project_id: &str) -> CwaResult<Context
     };
 
     // Get recent memory entries
-    let memory = list_memory(pool, project_id, Some(10))?;
+    let memory = list_memory(pool, project_id, Some(10)).await?;
 
     Ok(ContextSummary {
         project_name: project.name,
@@ -111,14 +111,14 @@ pub fn get_context_summary(pool: &DbPool, project_id: &str) -> CwaResult<Context
 }
 
 /// Suggest next steps based on current state.
-pub fn suggest_next_steps(pool: &DbPool, project_id: &str) -> CwaResult<Vec<String>> {
+pub async fn suggest_next_steps(pool: &DbPool, project_id: &str) -> CwaResult<Vec<String>> {
     let mut suggestions = Vec::new();
 
     // Check if there's a task in progress
-    let current_task = task::get_current_task(pool, project_id)?;
+    let current_task = task::get_current_task(pool, project_id).await?;
     if current_task.is_none() {
         // No task in progress, suggest starting one
-        let tasks = cwa_db::queries::tasks::list_tasks_by_status(pool, project_id, "todo")?;
+        let tasks = cwa_db::queries::tasks::list_tasks_by_status(pool, project_id, "todo").await?;
         if !tasks.is_empty() {
             suggestions.push(format!(
                 "Start working on task: {} ({})",
@@ -138,7 +138,7 @@ pub fn suggest_next_steps(pool: &DbPool, project_id: &str) -> CwaResult<Vec<Stri
     }
 
     // Check for specs without tasks
-    let specs = spec::list_specs(pool, project_id)?;
+    let specs = spec::list_specs(pool, project_id).await?;
     for spec in specs.iter().filter(|s| s.status == spec::model::SpecStatus::Active) {
         suggestions.push(format!("Active spec '{}' may need tasks created", spec.title));
     }
@@ -147,8 +147,8 @@ pub fn suggest_next_steps(pool: &DbPool, project_id: &str) -> CwaResult<Vec<Stri
 }
 
 /// Clean up expired memory entries.
-pub fn cleanup_memory(pool: &DbPool) -> CwaResult<usize> {
-    let count = queries::cleanup_expired_memory(pool)?;
+pub async fn cleanup_memory(pool: &DbPool) -> CwaResult<usize> {
+    let count = queries::cleanup_expired_memory(pool).await?;
     Ok(count)
 }
 
@@ -165,7 +165,7 @@ pub struct TaskCounts {
 // --- Observation Functions ---
 
 /// Add a new observation.
-pub fn add_observation(
+pub async fn add_observation(
     pool: &DbPool,
     project_id: &str,
     obs_type: &str,
@@ -196,40 +196,40 @@ pub fn add_observation(
         facts_json.as_deref(), concepts_json.as_deref(),
         files_mod_json.as_deref(), files_read_json.as_deref(),
         None, None, confidence,
-    )?;
+    ).await?;
 
-    let row = obs_queries::get_observation(pool, &id)?
+    let row = obs_queries::get_observation(pool, &id).await?
         .ok_or_else(|| crate::error::CwaError::NotFound("Observation just created not found".to_string()))?;
 
     Ok(Observation::from_row(row))
 }
 
 /// Get an observation by ID.
-pub fn get_observation(pool: &DbPool, id: &str) -> CwaResult<Option<Observation>> {
-    let row = obs_queries::get_observation(pool, id)?;
+pub async fn get_observation(pool: &DbPool, id: &str) -> CwaResult<Option<Observation>> {
+    let row = obs_queries::get_observation(pool, id).await?;
     Ok(row.map(Observation::from_row))
 }
 
 /// Get multiple observations by IDs.
-pub fn get_observations_batch(pool: &DbPool, ids: &[&str]) -> CwaResult<Vec<Observation>> {
-    let rows = obs_queries::get_observations_batch(pool, ids)?;
+pub async fn get_observations_batch(pool: &DbPool, ids: &[&str]) -> CwaResult<Vec<Observation>> {
+    let rows = obs_queries::get_observations_batch(pool, ids).await?;
     Ok(rows.into_iter().map(Observation::from_row).collect())
 }
 
 /// Get timeline of observations (compact index).
-pub fn get_timeline(pool: &DbPool, project_id: &str, days_back: i64, limit: i64) -> CwaResult<Vec<ObservationIndex>> {
-    let rows = obs_queries::list_observations_timeline(pool, project_id, days_back, limit)?;
+pub async fn get_timeline(pool: &DbPool, project_id: &str, days_back: i64, limit: i64) -> CwaResult<Vec<ObservationIndex>> {
+    let rows = obs_queries::list_observations_timeline(pool, project_id, days_back, limit).await?;
     Ok(rows.into_iter().map(ObservationIndex::from_row).collect())
 }
 
 /// Get high-confidence observations (full details).
-pub fn get_high_confidence_observations(pool: &DbPool, project_id: &str, min_confidence: f64, limit: i64) -> CwaResult<Vec<Observation>> {
-    let rows = obs_queries::list_high_confidence(pool, project_id, min_confidence, limit)?;
+pub async fn get_high_confidence_observations(pool: &DbPool, project_id: &str, min_confidence: f64, limit: i64) -> CwaResult<Vec<Observation>> {
+    let rows = obs_queries::list_high_confidence(pool, project_id, min_confidence, limit).await?;
     Ok(rows.into_iter().map(Observation::from_row).collect())
 }
 
 /// Create a summary from recent observations.
-pub fn create_summary(
+pub async fn create_summary(
     pool: &DbPool,
     project_id: &str,
     session_id: Option<&str>,
@@ -243,9 +243,9 @@ pub fn create_summary(
     obs_queries::create_summary(
         pool, &id, project_id, session_id, content,
         observations_count, key_facts_json.as_deref(), None, None,
-    )?;
+    ).await?;
 
-    let summaries = obs_queries::get_recent_summaries(pool, project_id, 1)?;
+    let summaries = obs_queries::get_recent_summaries(pool, project_id, 1).await?;
     let row = summaries.into_iter().next()
         .ok_or_else(|| crate::error::CwaError::NotFound("Summary just created not found".to_string()))?;
 
@@ -253,28 +253,28 @@ pub fn create_summary(
 }
 
 /// Get recent summaries.
-pub fn get_recent_summaries(pool: &DbPool, project_id: &str, limit: i64) -> CwaResult<Vec<Summary>> {
-    let rows = obs_queries::get_recent_summaries(pool, project_id, limit)?;
+pub async fn get_recent_summaries(pool: &DbPool, project_id: &str, limit: i64) -> CwaResult<Vec<Summary>> {
+    let rows = obs_queries::get_recent_summaries(pool, project_id, limit).await?;
     Ok(rows.into_iter().map(Summary::from_row).collect())
 }
 
 /// Boost confidence of an observation (cap at 1.0).
-pub fn boost_confidence(pool: &DbPool, id: &str, amount: f64) -> CwaResult<()> {
-    if let Some(row) = obs_queries::get_observation(pool, id)? {
+pub async fn boost_confidence(pool: &DbPool, id: &str, amount: f64) -> CwaResult<()> {
+    if let Some(row) = obs_queries::get_observation(pool, id).await? {
         let new_confidence = (row.confidence + amount).min(1.0);
-        obs_queries::update_confidence(pool, id, new_confidence)?;
+        obs_queries::update_confidence(pool, id, new_confidence).await?;
     }
     Ok(())
 }
 
 /// Decay confidence for all observations in a project.
-pub fn decay_confidence(pool: &DbPool, project_id: &str, factor: f64) -> CwaResult<usize> {
-    let count = obs_queries::decay_all_confidence(pool, project_id, factor)?;
+pub async fn decay_confidence(pool: &DbPool, project_id: &str, factor: f64) -> CwaResult<usize> {
+    let count = obs_queries::decay_all_confidence(pool, project_id, factor).await?;
     Ok(count)
 }
 
 /// Remove observations below a confidence threshold.
-pub fn remove_low_confidence_observations(pool: &DbPool, project_id: &str, min_confidence: f64) -> CwaResult<Vec<String>> {
-    let ids = obs_queries::remove_low_confidence(pool, project_id, min_confidence)?;
+pub async fn remove_low_confidence_observations(pool: &DbPool, project_id: &str, min_confidence: f64) -> CwaResult<Vec<String>> {
+    let ids = obs_queries::remove_low_confidence(pool, project_id, min_confidence).await?;
     Ok(ids)
 }

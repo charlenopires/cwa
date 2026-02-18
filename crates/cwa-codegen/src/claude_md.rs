@@ -27,14 +27,14 @@ struct ProjectInfo {
 }
 
 /// Generate CLAUDE.md content from the current project state.
-pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClaudeMd> {
-    let project = cwa_db::queries::projects::get_project(db, project_id)
+pub async fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClaudeMd> {
+    let project = cwa_db::queries::projects::get_project(db, project_id).await
         .map_err(|e| anyhow::anyhow!("Project not found: {}", e))?;
 
     let mut content = String::new();
 
     // Try to get project info (extended metadata)
-    let project_info = cwa_db::queries::projects::get_project_info(db, project_id)
+    let project_info = cwa_db::queries::projects::get_project_info(db, project_id).await
         .ok()
         .flatten()
         .and_then(|json| serde_json::from_str::<ProjectInfo>(&json).ok());
@@ -89,7 +89,7 @@ pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClau
     content.push_str("**Live Board:** Run `cwa serve` and open http://127.0.0.1:3030 to see real-time updates.\n\n");
 
     // Domain Model
-    let contexts = cwa_db::queries::domains::list_contexts(db, project_id)
+    let contexts = cwa_db::queries::domains::list_contexts(db, project_id).await
         .map_err(|e| anyhow::anyhow!("Failed to list contexts: {}", e))?;
 
     if !contexts.is_empty() {
@@ -100,7 +100,7 @@ pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClau
                 content.push_str(&format!("{}\n\n", desc));
             }
 
-            let objects = cwa_db::queries::domains::list_domain_objects(db, &ctx.id)
+            let objects = cwa_db::queries::domains::list_domain_objects(db, &ctx.id).await
                 .unwrap_or_default();
 
             if !objects.is_empty() {
@@ -117,7 +117,7 @@ pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClau
     }
 
     // Active Specs
-    let specs = cwa_db::queries::specs::list_specs(db, project_id)
+    let specs = cwa_db::queries::specs::list_specs(db, project_id).await
         .unwrap_or_default();
 
     let active_specs: Vec<_> = specs.iter()
@@ -144,7 +144,7 @@ pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClau
     }
 
     // Key Decisions
-    let decisions = cwa_db::queries::decisions::list_decisions(db, project_id)
+    let decisions = cwa_db::queries::decisions::list_decisions(db, project_id).await
         .unwrap_or_default();
 
     let accepted: Vec<_> = decisions.iter()
@@ -161,7 +161,7 @@ pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClau
     }
 
     // Glossary
-    let terms = cwa_db::queries::domains::list_glossary(db, project_id)
+    let terms = cwa_db::queries::domains::list_glossary(db, project_id).await
         .unwrap_or_default();
 
     if !terms.is_empty() {
@@ -175,7 +175,7 @@ pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClau
     }
 
     // Current Tasks
-    let tasks = cwa_db::queries::tasks::list_tasks(db, project_id)
+    let tasks = cwa_db::queries::tasks::list_tasks(db, project_id).await
         .unwrap_or_default();
 
     let in_progress: Vec<_> = tasks.iter()
@@ -191,14 +191,14 @@ pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClau
     }
 
     // Design System
-    if let Ok(Some(_)) = cwa_db::queries::design_systems::get_latest_design_system(db, project_id) {
+    if let Ok(Some(_)) = cwa_db::queries::design_systems::get_latest_design_system(db, project_id).await {
         content.push_str("## Design System\n\n");
         content.push_str("Design tokens reference: `.claude/design-system.md`\n\n");
         content.push_str("All UI implementation must follow the design system tokens defined above.\n\n");
     }
 
     // Recent Observations (high-confidence, top 10)
-    let high_conf_observations = cwa_db::queries::observations::list_high_confidence(db, project_id, 0.7, 10)
+    let high_conf_observations = cwa_db::queries::observations::list_high_confidence(db, project_id, 0.7, 10).await
         .unwrap_or_default();
 
     if !high_conf_observations.is_empty() {
@@ -218,7 +218,7 @@ pub fn generate_claude_md(db: &DbPool, project_id: &str) -> Result<GeneratedClau
     }
 
     // Last Session Summary
-    let summaries = cwa_db::queries::observations::get_recent_summaries(db, project_id, 1)
+    let summaries = cwa_db::queries::observations::get_recent_summaries(db, project_id, 1).await
         .unwrap_or_default();
 
     if let Some(summary) = summaries.first() {

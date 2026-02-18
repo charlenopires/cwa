@@ -17,14 +17,14 @@ pub struct GeneratedHooks {
 }
 
 /// Generate hooks configuration from domain invariants.
-pub fn generate_hooks(db: &DbPool, project_id: &str) -> Result<GeneratedHooks> {
-    let contexts = cwa_db::queries::domains::list_contexts(db, project_id)
+pub async fn generate_hooks(db: &DbPool, project_id: &str) -> Result<GeneratedHooks> {
+    let contexts = cwa_db::queries::domains::list_contexts(db, project_id).await
         .map_err(|e| anyhow::anyhow!("Failed to list contexts: {}", e))?;
 
     let mut hooks = Vec::new();
 
     for ctx in &contexts {
-        let objects = cwa_db::queries::domains::list_domain_objects(db, &ctx.id)
+        let objects = cwa_db::queries::domains::list_domain_objects(db, &ctx.id).await
             .map_err(|e| anyhow::anyhow!("Failed to list domain objects: {}", e))?;
 
         for obj in &objects {

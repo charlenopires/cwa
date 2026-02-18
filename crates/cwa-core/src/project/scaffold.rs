@@ -22,19 +22,20 @@ pub async fn create_project(target_dir: &Path, name: &str) -> CwaResult<()> {
     create_docker_infrastructure(target_dir).await?;
     create_git_scripts(target_dir).await?;
 
-    // Initialize database
-    let db_path = target_dir.join(".cwa/cwa.db");
-    let pool = cwa_db::init_pool(&db_path)?;
+    // Initialize database (Redis)
+    let redis_url = std::env::var("REDIS_URL")
+        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let pool = cwa_db::init_pool(&redis_url).await?;
 
     // Create project record
-    let project = crate::project::create_project(&pool, name, None)?;
+    let project = crate::project::create_project(&pool, name, None).await?;
 
     // Update constitution path
     let constitution_path = target_dir.join(".cwa/constitution.md");
-    crate::project::set_constitution_path(&pool, &project.id, constitution_path.to_str().unwrap())?;
+    crate::project::set_constitution_path(&pool, &project.id, constitution_path.to_str().unwrap()).await?;
 
     // Initialize Kanban columns
-    task::init_kanban_columns(&pool, &project.id)?;
+    task::init_kanban_columns(&pool, &project.id).await?;
 
     Ok(())
 }

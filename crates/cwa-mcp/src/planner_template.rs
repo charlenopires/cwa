@@ -35,19 +35,15 @@ pub struct DecisionInfo {
 }
 
 /// Read existing project state from a CWA database.
-pub fn read_existing_state(project_path: &Path) -> anyhow::Result<ExistingState> {
-    let db_path = project_path.join(".cwa/cwa.db");
-    if !db_path.exists() {
-        anyhow::bail!("No CWA database found at {}", db_path.display());
-    }
+pub async fn read_existing_state(project_path: &Path) -> anyhow::Result<ExistingState> {
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let pool = cwa_db::init_pool(&redis_url).await?;
 
-    let pool = cwa_db::init_pool(&db_path)?;
-
-    let project = cwa_core::project::get_default_project(&pool)?
+    let project = cwa_core::project::get_default_project(&pool).await?
         .ok_or_else(|| anyhow::anyhow!("No project found in database"))?;
 
     // Read bounded contexts
-    let contexts = cwa_core::domain::list_contexts(&pool, &project.id)?
+    let contexts = cwa_core::domain::list_contexts(&pool, &project.id).await?
         .into_iter()
         .map(|c| ContextInfo {
             name: c.name,
@@ -56,7 +52,7 @@ pub fn read_existing_state(project_path: &Path) -> anyhow::Result<ExistingState>
         .collect();
 
     // Read specs
-    let specs = cwa_core::spec::list_specs(&pool, &project.id)?
+    let specs = cwa_core::spec::list_specs(&pool, &project.id).await?
         .into_iter()
         .map(|s| SpecInfo {
             id: s.id[..8].to_string(),
@@ -69,7 +65,7 @@ pub fn read_existing_state(project_path: &Path) -> anyhow::Result<ExistingState>
         .collect();
 
     // Read decisions
-    let decisions = cwa_core::decision::list_decisions(&pool, &project.id)?
+    let decisions = cwa_core::decision::list_decisions(&pool, &project.id).await?
         .into_iter()
         .map(|d| DecisionInfo {
             title: d.title,
@@ -165,6 +161,7 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
 ### Domain Modeling (DDD)
 - `cwa domain context new "<name>" --description "<desc>"` — Create bounded context
 - `cwa domain context list` — List all contexts
+- `cwa domain object new "<name>" --context "<ctx>" --type <aggregate|entity|value_object|service|event> --description "<desc>"` — Create domain object
 
 ### Memory & Observations
 - `cwa memory add "<content>" --type <fact|decision|preference|pattern>` — Store memory with embedding
@@ -189,15 +186,16 @@ const HEADER: &str = r#"You are a software architect using Domain-Driven Design 
 
 3. The artifact must be ONLY a ```bash block with CWA commands. No other text outside the code block (except a TECH STACK table at the very end).
 
-4. Structure your plan using these 8 phases (adapt as needed):
+4. Structure your plan using these 9 phases (adapt as needed):
    - Phase 1 — INITIALIZATION: Project setup
    - Phase 2 — INFRASTRUCTURE: Start services
    - Phase 3 — STRATEGIC DESIGN: Identify subdomains and bounded contexts
    - Phase 4 — DOMAIN GLOSSARY: Ubiquitous language terms as facts
    - Phase 5 — ARCHITECTURAL DECISIONS: Record ADRs as memories (--type decision)
    - Phase 6 — SPECIFICATIONS: Feature specs with acceptance criteria (SDD)
-   - Phase 7 — KNOWLEDGE GRAPH SYNC: Sync project to Neo4j
-   - Phase 8 — GENERATE ARTIFACTS & VERIFY: Generate code and verify state
+   - Phase 7 — DOMAIN OBJECTS: Define aggregates, entities, value objects, services, events
+   - Phase 8 — KNOWLEDGE GRAPH SYNC: Sync project to Neo4j
+   - Phase 9 — GENERATE ARTIFACTS & VERIFY: Generate code and verify state
 
 5. ALL data must be REAL (from user answers), NOT placeholders.
 
@@ -320,13 +318,25 @@ cwa spec new "Tag Filtering" \
   -c "Counter shows session count after filter applied" && \
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 7 — KNOWLEDGE GRAPH SYNC
-# Sync all project data (contexts, specs, decisions) into Neo4j
+# PHASE 7 — DOMAIN OBJECTS
+# Define aggregates, entities, value objects, services, and events per context
+# ═══════════════════════════════════════════════════════════════════════════════
+cwa domain object new "Session" --context "Session" --type aggregate --description "Root aggregate representing a named snapshot of browser tabs" && \
+cwa domain object new "SessionMetadata" --context "Session" --type value_object --description "Immutable metadata: name, creation timestamp, tab count" && \
+cwa domain object new "SessionSaved" --context "Session" --type event --description "Event emitted when a session is successfully saved" && \
+cwa domain object new "Tab" --context "Tab" --type entity --description "A single browser tab with URL, title, favicon, and pin state" && \
+cwa domain object new "TabCaptureService" --context "Tab" --type service --description "Service that captures current browser tabs into a session snapshot" && \
+cwa domain object new "Tag" --context "Tag" --type entity --description "A colored label used to categorize sessions" && \
+cwa domain object new "TagColor" --context "Tag" --type value_object --description "Predefined color from the tag palette" && \
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 8 — KNOWLEDGE GRAPH SYNC
+# Sync all project data (contexts, specs, decisions, domain objects) into Neo4j
 # ═══════════════════════════════════════════════════════════════════════════════
 cwa graph sync && \
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 8 — GENERATE ARTIFACTS & VERIFY
+# PHASE 9 — GENERATE ARTIFACTS & VERIFY
 # Generate code artifacts and verify project state
 # ═══════════════════════════════════════════════════════════════════════════════
 cwa codegen all && \

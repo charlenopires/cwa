@@ -15,7 +15,7 @@ use super::SyncResult;
 
 /// Sync all tasks for a project to Neo4j.
 pub async fn sync_tasks(client: &GraphClient, db: &DbPool, project_id: &str) -> Result<SyncResult> {
-    let tasks = cwa_db::queries::tasks::list_tasks(db, project_id)
+    let tasks = cwa_db::queries::tasks::list_tasks(db, project_id).await
         .map_err(|e| anyhow::anyhow!("Failed to list tasks: {}", e))?;
 
     let mut result = SyncResult::default();

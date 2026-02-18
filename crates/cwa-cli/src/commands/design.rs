@@ -32,10 +32,10 @@ pub async fn execute(cmd: DesignCommands, project_dir: &Path) -> Result<()> {
 }
 
 async fn cmd_from_image(args: FromImageArgs, project_dir: &Path) -> Result<()> {
-    let db_path = project_dir.join(".cwa/cwa.db");
-    let pool = cwa_db::init_pool(&db_path)?;
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let pool = cwa_db::init_pool(&redis_url).await?;
 
-    let project = cwa_core::project::get_default_project(&pool)?
+    let project = cwa_core::project::get_default_project(&pool).await?
         .ok_or_else(|| anyhow::anyhow!("No project found. Run 'cwa init' first."))?;
 
     // 1. Get API key from environment
@@ -62,12 +62,12 @@ async fn cmd_from_image(args: FromImageArgs, project_dir: &Path) -> Result<()> {
         return Ok(());
     }
 
-    // 3. Store in SQLite
-    cwa_core::design::store_design_system(&pool, &design_system)?;
+    // 3. Store in Redis
+    cwa_core::design::store_design_system(&pool, &design_system).await?;
     println!("{} Stored design system (id: {})", "✓".green().bold(), &design_system.id[..8]);
 
     // 4. Generate .claude/design-system.md
-    let generated = cwa_codegen::generate_design_system_md(&pool, &project.id)?;
+    let generated = cwa_codegen::generate_design_system_md(&pool, &project.id).await?;
     if let Some(gen) = generated {
         let path = cwa_codegen::write_design_system_md(&gen, project_dir)?;
         println!("{} Generated: {}", "✓".green().bold(), path);
