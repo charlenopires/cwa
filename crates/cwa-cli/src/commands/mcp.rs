@@ -86,6 +86,10 @@ pub struct InstallArgs {
     /// Show configuration without installing (dry run)
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Overwrite existing server configuration
+    #[arg(short = 'f', long)]
+    pub force: bool,
 }
 
 #[derive(Subcommand)]
@@ -108,7 +112,11 @@ pub enum McpCommands {
         #[arg(value_enum)]
         target: Option<McpTarget>,
 
-        /// Server name to remove (default: "cwa")
+        /// Server variant to remove (determines default name: "cwa" or "cwa-planner")
+        #[arg(short = 't', long, value_enum, default_value = "stdio")]
+        variant: McpServerVariant,
+
+        /// Override server name to remove
         #[arg(short, long)]
         name: Option<String>,
 
@@ -140,8 +148,8 @@ pub async fn execute(cmd: McpCommands, project_dir: &Path) -> Result<()> {
             install_mcp_server(args, project_dir).await?;
         }
 
-        McpCommands::Uninstall { target, name, yes } => {
-            uninstall_mcp_server(target, name, yes).await?;
+        McpCommands::Uninstall { target, variant, name, yes } => {
+            uninstall_mcp_server(target, variant, name, yes).await?;
         }
     }
 
@@ -264,6 +272,7 @@ fn add_server_to_config(
     server_name: &str,
     server_config: Value,
     target: McpTarget,
+    force: bool,
 ) -> Result<bool> {
     // VSCode uses "servers" inside an "mcp" object
     let servers_key = match target {
@@ -288,11 +297,14 @@ fn add_server_to_config(
 
     // Check if server already exists
     if servers.get(server_name).is_some() {
-        return Ok(false); // Already exists
+        if !force {
+            return Ok(false); // Already exists, skip
+        }
+        // force = true → overwrite existing entry
     }
 
     servers[server_name] = server_config;
-    Ok(true) // Added new
+    Ok(true)
 }
 
 /// Remove MCP server from a config file
@@ -323,6 +335,7 @@ fn install_to_target(
     variant: McpServerVariant,
     server_name: &str,
     dry_run: bool,
+    force: bool,
     project_dir: &Path,
 ) -> Result<InstallResult> {
     let path = get_config_path(target)
@@ -340,7 +353,7 @@ fn install_to_target(
         return Ok(InstallResult::DryRun);
     }
 
-    let added = add_server_to_config(&mut config, server_name, server_config, target)?;
+    let added = add_server_to_config(&mut config, server_name, server_config, target, force)?;
 
     if added {
         write_config(&path, &config)?;
@@ -432,7 +445,7 @@ async fn install_mcp_server(args: InstallArgs, project_dir: &Path) -> Result<()>
     let mut failed = 0;
 
     for target in &targets {
-        let result = install_to_target(*target, args.variant, server_name, args.dry_run, project_dir);
+        let result = install_to_target(*target, args.variant, server_name, args.dry_run, args.force, project_dir);
 
         match result {
             Ok(InstallResult::Installed) => {
@@ -497,12 +510,18 @@ async fn install_mcp_server(args: InstallArgs, project_dir: &Path) -> Result<()>
 }
 
 /// Uninstall MCP server from selected targets
-async fn uninstall_mcp_server(target: Option<McpTarget>, name: Option<String>, yes: bool) -> Result<()> {
+async fn uninstall_mcp_server(
+    target: Option<McpTarget>,
+    variant: McpServerVariant,
+    name: Option<String>,
+    yes: bool,
+) -> Result<()> {
     println!();
     println!("{} CWA MCP Server Uninstallation", "●".red().bold());
     println!();
 
-    let server_name = name.as_deref().unwrap_or("cwa");
+    let server_name = name.as_deref()
+        .unwrap_or_else(|| get_default_server_name(variant));
 
     let targets: Vec<McpTarget> = if let Some(target) = target {
         if target == McpTarget::All {

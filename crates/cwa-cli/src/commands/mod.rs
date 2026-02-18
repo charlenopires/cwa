@@ -140,8 +140,13 @@ impl Cli {
         let project_dir = if let Some(p) = self.project {
             p
         } else if matches!(self.command, Commands::Mcp(_)) {
-            // For MCP commands, search up the directory tree for a CWA project
-            find_cwa_project()?
+            // Only Stdio needs an existing CWA project (Redis connection).
+            // Planner, Install, Uninstall, and Status must work from any CWD
+            // (Claude Desktop launches them from "/" or other system directories).
+            match &self.command {
+                Commands::Mcp(mcp::McpCommands::Stdio) => find_cwa_project()?,
+                _ => std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
+            }
         } else {
             std::env::current_dir()?
         };
