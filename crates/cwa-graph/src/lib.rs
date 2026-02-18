@@ -13,4 +13,4 @@ pub mod queries;
 
 pub use client::{GraphClient, GraphConfig, GraphCounts};
 pub use hyperedge::{EntityType, HyperedgeInfo, create_hyperedge, find_hyperedges_for_entity};
-pub use sync::{SyncResult, run_full_sync, get_last_sync_time};
+pub use sync::{SyncResult, run_full_sync, get_last_sync_time, save_last_sync_time};

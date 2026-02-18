@@ -12,6 +12,7 @@ pub mod memory;
 
 use anyhow::{Context, Result};
 use neo4rs::Query;
+use redis::AsyncCommands;
 use tracing::info;
 
 use cwa_db::DbPool;
@@ -88,6 +89,9 @@ pub async fn run_full_sync(client: &GraphClient, db: &DbPool, project_id: &str) 
         "Full sync complete"
     );
 
+    // Record sync timestamp so `cwa graph status` can show it
+    save_last_sync_time(db, project_id).await?;
+
     Ok(total)
 }
 
@@ -114,12 +118,21 @@ async fn sync_project_node(client: &GraphClient, db: &DbPool, project_id: &str) 
     Ok(())
 }
 
-/// Update sync_state after a successful sync (no-op with Redis backend).
-fn update_sync_state(_db: &DbPool, _project_id: &str) -> Result<()> {
+/// Save the current UTC timestamp as the last sync time for a project.
+pub async fn save_last_sync_time(db: &DbPool, project_id: &str) -> Result<()> {
+    let mut conn = db.clone();
+    let key = format!("graph:sync:{}", project_id);
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.set::<_, _, ()>(&key, &now).await
+        .map_err(|e| anyhow::anyhow!("Redis error saving sync time: {}", e))?;
     Ok(())
 }
 
-/// Get the last sync timestamp for a project (no-op with Redis backend).
-pub fn get_last_sync_time(_db: &DbPool, _project_id: &str) -> Result<Option<String>> {
-    Ok(None)
+/// Get the last sync timestamp for a project from Redis.
+pub async fn get_last_sync_time(db: &DbPool, project_id: &str) -> Result<Option<String>> {
+    let mut conn = db.clone();
+    let key = format!("graph:sync:{}", project_id);
+    let value: Option<String> = conn.get(&key).await
+        .map_err(|e| anyhow::anyhow!("Redis error reading sync time: {}", e))?;
+    Ok(value)
 }

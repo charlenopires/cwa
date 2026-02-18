@@ -1080,7 +1080,7 @@ services:
       - "${{REDIS_INSIGHT_PORT:-8001}}:8001"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes --appendfsync everysec
+    command: redis-server --appendonly yes --appendfsync everysec --protected-mode no
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

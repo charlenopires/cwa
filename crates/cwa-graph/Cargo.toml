@@ -9,6 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 cwa-db = { workspace = true }
+redis = { workspace = true }
 neo4rs = { workspace = true }
 rusqlite = { workspace = true }
 tokio = { workspace = true }

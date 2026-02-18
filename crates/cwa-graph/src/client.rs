@@ -31,18 +31,29 @@ pub struct GraphClient {
 
 impl GraphClient {
     /// Create a new GraphClient from config.
+    ///
+    /// Note: neo4rs uses a lazy deadpool — `Graph::connect` only creates the pool
+    /// object and does NOT establish a real bolt connection yet.  We run a cheap
+    /// `RETURN 1` ping immediately so that callers can wrap this in a timeout and
+    /// get a fast failure when Neo4j is unreachable instead of hanging silently.
     pub async fn connect(config: &GraphConfig) -> Result<Self> {
         let neo4j_config = ConfigBuilder::default()
             .uri(&config.uri)
             .user(&config.user)
             .password(&config.password)
             .db("neo4j")
+            .max_connections(4)  // Keep pool small for CLI use-cases
+            .fetch_size(20)
             .build()
             .context("Failed to build Neo4j config")?;
 
         let graph = Graph::connect(neo4j_config)
             .await
-            .context("Failed to connect to Neo4j")?;
+            .context("Failed to create Neo4j connection pool")?;
+
+        // Ping to force an actual TCP+bolt handshake so the caller's timeout works.
+        graph.run(Query::new("RETURN 1".to_string())).await
+            .context("Neo4j is not responding to queries")?;
 
         Ok(Self { graph })
     }

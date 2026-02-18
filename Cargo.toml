@@ -102,4 +102,6 @@ cwa-web = { path = "crates/cwa-web" }
 [profile.release]
 lto = true
 codegen-units = 1
-strip = true
+# "debuginfo" remove debug info mas preserva a assinatura adhoc que o macOS exige.
+# "symbols" (strip = true) remove a assinatura → binário rejeitado com SIGKILL no macOS.
+strip = "debuginfo"

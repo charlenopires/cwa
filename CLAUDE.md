@@ -54,6 +54,33 @@ The planner uses Domain-Driven Design and Specification-Driven Development:
 
 - Live Reload Test Task [high]
 
+## Build & Install (macOS)
+
+**SEMPRE usar este comando ao instalar o binário — nunca apenas `cp`:**
+
+```bash
+cargo build -p cwa --release \
+  && cp target/release/cwa /usr/local/bin/cwa \
+  && codesign -s - -f /usr/local/bin/cwa
+```
+
+### Por que o `codesign` é obrigatório
+
+macOS exige assinatura adhoc em qualquer executável. O linker Rust aplica essa
+assinatura automaticamente, mas certas configurações do perfil release podem
+removê-la. Sem a assinatura, o kernel envia **SIGKILL** ao processo no momento
+do `exec()` — o shell reporta isso como `killed`, sem nenhuma saída.
+
+Diagnóstico rápido:
+```bash
+spctl -a -t exec -vv /usr/local/bin/cwa   # "rejected" → precisa de codesign
+codesign -s - -f /usr/local/bin/cwa       # re-aplica a assinatura adhoc
+```
+
+O `Cargo.toml` usa `strip = "debuginfo"` (não `strip = true`) para preservar
+a assinatura que o linker aplica. Mesmo assim, sempre executar o `codesign`
+acima como última etapa do install para garantir.
+
 ## Recent Observations
 
 - **[DISCOVERY]** Test observation for Qdrant fix

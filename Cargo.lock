@@ -773,6 +773,7 @@ dependencies = [
  "chrono",
  "cwa-db",
  "neo4rs",
+ "redis",
  "rusqlite",
  "serde",
  "serde_json",

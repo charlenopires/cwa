@@ -1,9 +1,10 @@
 //! Knowledge Graph CLI commands.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::Colorize;
 use std::path::Path;
+use std::time::Duration;
 
 #[derive(Subcommand)]
 pub enum GraphCommands {
@@ -40,14 +41,50 @@ pub enum GraphCommands {
 }
 
 pub async fn execute(cmd: GraphCommands, project_dir: &Path) -> Result<()> {
+    // Print command header immediately — before any connection attempt that can fail,
+    // so the user always sees output even when Redis/Neo4j is unavailable.
+    match &cmd {
+        GraphCommands::Sync => println!("{}", "Syncing to Knowledge Graph...".bold()),
+        GraphCommands::Status => {
+            println!("{}", "Knowledge Graph Status".bold());
+            println!("{}", "─".repeat(40));
+        }
+        GraphCommands::Query { query } => println!("{} {}", "Query:".bold(), query.dimmed()),
+        GraphCommands::Impact { entity_type, entity_id } => {
+            println!("{} {} {}", "Impact analysis for".bold(), entity_type.cyan(), entity_id.yellow());
+            println!("{}", "─".repeat(50));
+        }
+        GraphCommands::Explore { entity_type, entity_id, depth } => {
+            println!("{} {} {} (depth={})", "Exploring".bold(), entity_type.cyan(), entity_id.yellow(), depth);
+            println!("{}", "─".repeat(50));
+        }
+    }
+
     let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
-    let pool = cwa_db::init_pool(&redis_url).await?;
+    // redis ConnectionManager retries silently — wrap in a hard timeout so the
+    // process fails fast when Redis is not running instead of hanging forever.
+    let pool = tokio::time::timeout(
+        Duration::from_secs(10),
+        cwa_db::init_pool(&redis_url),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("Timed out connecting to Redis after 10s. Is Redis running? ({})", redis_url))?
+    .context("Failed to connect to Redis. Is Redis running?")?;
 
     let project = cwa_core::project::get_default_project(&pool).await?
         .ok_or_else(|| anyhow::anyhow!("No project found. Run 'cwa init' first."))?;
 
-    // Connect to Neo4j
-    let graph_client = cwa_graph::GraphClient::connect_default().await?;
+    // Connect to Neo4j with a hard timeout so the process never hangs silently
+    // when Neo4j is unreachable (bolt: TCP connects to a closed port can block indefinitely).
+    let graph_client = tokio::time::timeout(
+        Duration::from_secs(5),
+        cwa_graph::GraphClient::connect_default(),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!(
+        "Timed out connecting to Neo4j at bolt://localhost:7687 after 5s. Is Neo4j running?"
+    ))?
+    .context("Failed to connect to Neo4j at bolt://localhost:7687. Is Neo4j running?")?;
 
     match cmd {
         GraphCommands::Sync => cmd_sync(&graph_client, &pool, &project.id).await,
@@ -64,13 +101,26 @@ pub async fn execute(cmd: GraphCommands, project_dir: &Path) -> Result<()> {
 
 /// Run full sync from SQLite to Neo4j.
 async fn cmd_sync(client: &cwa_graph::GraphClient, db: &cwa_db::DbPool, project_id: &str) -> Result<()> {
-    println!("{}", "Syncing to Knowledge Graph...".bold());
+    // Schema initialization — wrap in a timeout so transient neo4rs retries
+    // (which back off up to 60s per query) don't silently hang the process.
+    println!("  {} Initializing schema...", "→".dimmed());
+    tokio::time::timeout(
+        Duration::from_secs(30),
+        cwa_graph::schema::initialize_schema(client),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("Schema initialization timed out after 30s. Is Neo4j responding?"))?
+    .context("Failed to initialize Neo4j schema")?;
 
-    // Initialize schema first
-    cwa_graph::schema::initialize_schema(client).await?;
-
-    // Run the sync
-    let result = cwa_graph::run_full_sync(client, db, project_id).await?;
+    // Full sync
+    println!("  {} Syncing entities...", "→".dimmed());
+    let result = tokio::time::timeout(
+        Duration::from_secs(120),
+        cwa_graph::run_full_sync(client, db, project_id),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("Sync timed out after 120s. Neo4j may be unresponsive."))?
+    .context("Sync failed")?;
 
     println!("\n{}", "Sync complete:".green().bold());
     println!("  Nodes created/updated: {}", result.nodes_created + result.nodes_updated);
@@ -169,14 +219,11 @@ async fn cmd_explore(client: &cwa_graph::GraphClient, entity_type: &str, entity_
 
 /// Show graph status (node/relationship counts, last sync time).
 async fn cmd_status(client: &cwa_graph::GraphClient, db: &cwa_db::DbPool, project_id: &str) -> Result<()> {
-    println!("{}", "Knowledge Graph Status".bold());
-    println!("{}", "─".repeat(40));
-
     let counts = client.get_counts().await?;
     println!("  Nodes:         {}", counts.nodes.to_string().cyan());
     println!("  Relationships: {}", counts.relationships.to_string().cyan());
 
-    let last_sync = cwa_graph::get_last_sync_time(db, project_id)?;
+    let last_sync = cwa_graph::get_last_sync_time(db, project_id).await?;
     match last_sync {
         Some(time) => println!("  Last sync:     {}", time.green()),
         None => println!("  Last sync:     {}", "never".yellow()),
