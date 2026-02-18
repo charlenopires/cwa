@@ -125,5 +125,35 @@ function initSortable() {
         });
     });
 }
+
+// Auto-refresh board when CWA MCP broadcasts a task update
+(function() {
+    const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+    let ws, retryDelay = 1000;
+
+    function connect() {
+        ws = new WebSocket(wsUrl);
+
+        ws.onmessage = function(event) {
+            try {
+                const msg = JSON.parse(event.data);
+                const t = msg.type || msg.event;
+                if (t === 'BoardRefresh' || t === 'board_refresh' || t === 'TaskUpdated') {
+                    htmx.ajax('GET', '/boards/{{ board_id }}/columns', {
+                        target: '#board-columns',
+                        swap: 'innerHTML'
+                    });
+                }
+            } catch (e) {}
+        };
+
+        ws.onopen = function() { retryDelay = 1000; };
+        ws.onclose = function() {
+            setTimeout(connect, Math.min(retryDelay *= 2, 30000));
+        };
+    }
+
+    connect();
+})();
 </script>
 {% endblock %}
