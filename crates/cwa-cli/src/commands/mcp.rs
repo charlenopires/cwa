@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Number of tools and resources available in the MCP server.
-const MCP_TOOLS_COUNT: usize = 34;
-const MCP_RESOURCES_COUNT: usize = 11;
+const MCP_TOOLS_COUNT: usize = 39;
+const MCP_RESOURCES_COUNT: usize = 12;
 
 /// Supported software targets for MCP installation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

@@ -787,10 +787,12 @@ name = "cwa-mcp"
 version = "0.7.0"
 dependencies = [
  "anyhow",
+ "cwa-codegen",
  "cwa-core",
  "cwa-db",
  "cwa-embedding",
  "cwa-graph",
+ "redis",
  "reqwest",
  "serde",
  "serde_json",

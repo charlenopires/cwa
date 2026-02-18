@@ -17,6 +17,7 @@
 
 use anyhow::Result;
 use neo4rs::Query;
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::GraphClient;
@@ -48,10 +49,25 @@ impl EntityType {
             EntityType::Decision => "Decision",
         }
     }
+
+    /// Parse from string (case-insensitive).
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "project" => Self::Project,
+            "spec" => Self::Spec,
+            "task" => Self::Task,
+            "boundedcontext" | "bounded_context" => Self::BoundedContext,
+            "domainobject" | "domain_object" => Self::DomainObject,
+            "observation" => Self::Observation,
+            "file" => Self::File,
+            "decision" => Self::Decision,
+            _ => Self::Spec,
+        }
+    }
 }
 
 /// Summary of a hyperedge returned from graph queries.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct HyperedgeInfo {
     pub id: String,
     pub edge_type: String,

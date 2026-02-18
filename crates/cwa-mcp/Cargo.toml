@@ -10,6 +10,7 @@ cwa-core = { workspace = true }
 cwa-db = { workspace = true }
 cwa-graph = { workspace = true }
 cwa-embedding = { workspace = true }
+cwa-codegen = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -17,3 +18,4 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 reqwest = { version = "0.12", features = ["json"] }
+redis = { workspace = true }
