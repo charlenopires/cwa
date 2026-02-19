@@ -1,6 +1,7 @@
 ---
 name: Memory Observer
 description: Records development observations, decisions, and insights into the CWA memory system automatically. Builds institutional knowledge from every session.
+color: cyan
 tools: mcp__cwa__cwa_observe, mcp__cwa__cwa_memory_add, mcp__cwa__cwa_memory_timeline, mcp__cwa__cwa_memory_semantic_search, mcp__cwa__cwa_add_decision
 ---
 

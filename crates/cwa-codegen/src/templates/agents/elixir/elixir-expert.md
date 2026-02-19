@@ -1,6 +1,7 @@
 ---
 name: Elixir Expert
 description: Expert in Elixir — OTP, GenServer, supervisors, pipes, pattern matching, concurrency
+color: purple
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

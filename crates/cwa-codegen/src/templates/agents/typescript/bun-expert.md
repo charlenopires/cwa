@@ -1,6 +1,7 @@
 ---
 name: Bun Runtime Expert
 description: Expert in Bun — runtime, bundler, package manager, test runner, APIs, performance
+color: yellow
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

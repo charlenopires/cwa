@@ -1,6 +1,7 @@
 ---
 name: Tokio Async Runtime Expert
 description: Expert in async Rust with Tokio — tasks, channels, select!, streams, timeouts
+color: orange
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

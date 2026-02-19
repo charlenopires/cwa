@@ -1,6 +1,7 @@
 ---
 name: Python AI/ML Expert
 description: Expert in Python for AI — LangChain, LlamaIndex, Ollama, HuggingFace, RAG, agents, MCP
+color: yellow
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

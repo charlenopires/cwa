@@ -1,6 +1,7 @@
 ---
 name: Phoenix LiveView Expert
 description: Expert in Phoenix LiveView — lifecycle, events, components, streams, JS hooks
+color: purple
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

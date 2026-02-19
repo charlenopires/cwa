@@ -1,6 +1,7 @@
 ---
 name: Security Expert
 description: Expert in application security — OWASP Top 10, authentication, authorization, input validation, secrets management
+color: red
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

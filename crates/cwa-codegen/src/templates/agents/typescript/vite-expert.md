@@ -1,6 +1,7 @@
 ---
 name: Vite Build Expert
 description: Expert in Vite — dev server, bundling, plugins, optimisation, SSR, library mode
+color: blue
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

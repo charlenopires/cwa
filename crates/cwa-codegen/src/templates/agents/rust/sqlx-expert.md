@@ -1,6 +1,7 @@
 ---
 name: SQLx Database Expert
 description: Expert in SQLx for Rust — queries, transactions, migrations, connection pools
+color: orange
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

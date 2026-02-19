@@ -1,6 +1,7 @@
 ---
 name: Spec Reviewer
 description: Reviews specifications for completeness, clarity, and testability. Validates acceptance criteria meet SDD standards before work begins.
+color: purple
 tools: Read, mcp__cwa__cwa_get_spec, mcp__cwa__cwa_validate_spec, mcp__cwa__cwa_add_acceptance_criteria, mcp__cwa__cwa_list_specs
 ---
 

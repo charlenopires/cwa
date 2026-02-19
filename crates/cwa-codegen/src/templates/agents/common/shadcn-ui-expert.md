@@ -1,6 +1,7 @@
 ---
 name: shadcn/ui Expert
 description: Expert in shadcn/ui — components, Radix UI primitives, theming, composition patterns
+color: pink
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

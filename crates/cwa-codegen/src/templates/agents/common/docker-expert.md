@@ -1,6 +1,7 @@
 ---
 name: Docker Expert
 description: Expert in Docker — Dockerfile, Compose, multi-stage builds, security hardening, optimisation
+color: blue
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

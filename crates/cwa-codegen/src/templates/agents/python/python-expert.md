@@ -1,6 +1,7 @@
 ---
 name: Python Expert
 description: Expert in Python 3.12+ — typing, async, dataclasses, protocols, testing, packaging
+color: yellow
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

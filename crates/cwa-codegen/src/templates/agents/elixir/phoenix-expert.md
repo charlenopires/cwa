@@ -1,6 +1,7 @@
 ---
 name: Phoenix Framework Expert
 description: Expert in Phoenix web framework — controllers, plugs, routing, contexts, REST API
+color: purple
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

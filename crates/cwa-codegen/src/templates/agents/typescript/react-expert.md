@@ -1,6 +1,7 @@
 ---
 name: React Expert
 description: Expert in React 19 — hooks, server components, actions, concurrent features, TypeScript
+color: cyan
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

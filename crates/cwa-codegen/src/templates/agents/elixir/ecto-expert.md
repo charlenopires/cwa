@@ -1,6 +1,7 @@
 ---
 name: Ecto Database Expert
 description: Expert in Ecto — schemas, changesets, queries, migrations, associations
+color: purple
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

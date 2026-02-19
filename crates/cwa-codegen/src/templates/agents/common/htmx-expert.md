@@ -1,6 +1,7 @@
 ---
 name: HTMX Expert
 description: Expert in HTMX — hypermedia-driven UI, attributes, swap strategies, server integration
+color: orange
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

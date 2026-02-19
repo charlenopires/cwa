@@ -1,6 +1,7 @@
 ---
 name: DDD Domain Expert
 description: Expert in Domain-Driven Design — bounded contexts, aggregates, ubiquitous language, context mapping, strategic and tactical patterns
+color: green
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

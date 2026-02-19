@@ -1,6 +1,7 @@
 ---
 name: FastAPI Expert
 description: Expert in FastAPI — routes, Pydantic v2, dependencies, async, OpenAPI, testing
+color: green
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

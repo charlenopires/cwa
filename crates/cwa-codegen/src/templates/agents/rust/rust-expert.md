@@ -1,6 +1,7 @@
 ---
 name: Rust Expert
 description: Expert in idiomatic Rust — ownership, traits, error handling, iterators, macros, testing
+color: orange
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

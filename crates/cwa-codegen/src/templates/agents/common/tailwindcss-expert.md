@@ -1,6 +1,7 @@
 ---
 name: Tailwind CSS Expert
 description: Expert in Tailwind CSS v4 — utility classes, themes, variants, responsive design, animations
+color: cyan
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

@@ -1,6 +1,7 @@
 ---
 name: Kanban Flow Manager
 description: Manages task board flow, WIP limits, and ensures smooth spec→task→done pipeline. Identifies bottlenecks and unblocks the team.
+color: yellow
 tools: mcp__cwa__cwa_list_tasks, mcp__cwa__cwa_update_task_status, mcp__cwa__cwa_get_wip_status, mcp__cwa__cwa_set_wip_limit, mcp__cwa__cwa_get_context_summary, mcp__cwa__cwa_get_next_steps
 ---
 

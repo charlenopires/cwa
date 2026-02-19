@@ -1,6 +1,7 @@
 ---
 name: Next.js Expert
 description: Expert in Next.js 15 App Router — server components, actions, routing, caching
+color: blue
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

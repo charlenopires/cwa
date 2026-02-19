@@ -1,6 +1,7 @@
 ---
 name: Elixir AI/ML Expert
 description: Expert in Elixir for AI — Nx, Bumblebee, Axon, LangChain, Ollama, streaming inference
+color: purple
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

@@ -1,6 +1,7 @@
 ---
 name: TypeScript Expert
 description: Expert in TypeScript 5.x — type system, generics, utility types, patterns, tooling
+color: blue
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

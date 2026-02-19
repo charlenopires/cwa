@@ -1,6 +1,7 @@
 ---
 name: Rust AI/ML Expert
 description: Expert in Rust for AI — candle, ort (ONNX Runtime), tokenizers, LLM inference, embeddings
+color: orange
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

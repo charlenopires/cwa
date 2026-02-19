@@ -1,6 +1,7 @@
 ---
 name: Axum Web Framework Expert
 description: Expert in Axum 0.8 — handlers, routers, middleware, extractors, Tower ecosystem
+color: orange
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

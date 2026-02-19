@@ -1,6 +1,7 @@
 ---
 name: TDD Expert
 description: Expert in Test-Driven Development — red-green-refactor cycle, test doubles, property-based testing, BDD
+color: green
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
