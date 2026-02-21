@@ -90,11 +90,11 @@ pub async fn execute(cmd: InfraCommands, project_dir: &Path) -> Result<()> {
 
 /// Derive a Docker project name from the project directory's base name.
 fn project_name(project_dir: &Path) -> String {
-    project_dir
+    let base = project_dir
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("cwa")
-        .to_string()
+        .unwrap_or("cwa");
+    format!("{}_cwainfra", base)
 }
 
 /// Find the docker-compose.yml file.
@@ -226,7 +226,12 @@ fn cmd_down(project_dir: &Path, clean: bool) -> Result<()> {
 
         // Also remove any orphan containers with cwa- prefix
         let _ = Command::new("docker")
-            .args(["rm", "-f", "cwa-redis", "cwa-neo4j", "cwa-qdrant", "cwa-ollama"])
+            .args(["rm", "-f",
+                &format!("{}-redis", name),
+                &format!("{}-neo4j", name),
+                &format!("{}-qdrant", name),
+                &format!("{}-ollama", name),
+            ])
             .status();
 
         println!("{}", "Infrastructure stopped, volumes and images removed.".green());

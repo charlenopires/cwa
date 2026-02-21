@@ -47,8 +47,18 @@ pub async fn execute(args: CleanArgs, project_dir: &Path) -> Result<()> {
                 .status();
 
             // Remove any orphan containers
+            let proj_base = project_dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("cwa");
+            let infra_name = format!("{}_cwainfra", proj_base);
             let _ = Command::new("docker")
-                .args(["rm", "-f", "cwa-neo4j", "cwa-qdrant", "cwa-ollama"])
+                .args(["rm", "-f",
+                    &format!("{}-neo4j", infra_name),
+                    &format!("{}-qdrant", infra_name),
+                    &format!("{}-ollama", infra_name),
+                    &format!("{}-redis", infra_name),
+                ])
                 .status();
 
             println!("  {} Docker infrastructure removed", "✓".green());

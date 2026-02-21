@@ -1066,7 +1066,7 @@ async fn create_docker_infrastructure(target_dir: &Path, name: &str) -> CwaResul
         r#"# CWA Infrastructure - Primary Store + Knowledge Graph + Semantic Memory
 # Start with: cwa infra up
 
-name: {name}
+name: {name}_cwainfra
 
 services:
   # ===========================================
@@ -1074,7 +1074,7 @@ services:
   # ===========================================
   redis:
     image: redis/redis-stack:latest
-    container_name: {name}-redis
+    container_name: {name}_cwainfra-redis
     ports:
       - "${{REDIS_PORT:-6379}}:6379"
       - "${{REDIS_INSIGHT_PORT:-8001}}:8001"
@@ -1096,7 +1096,7 @@ services:
   # ===========================================
   neo4j:
     image: neo4j:5.26-community
-    container_name: {name}-neo4j
+    container_name: {name}_cwainfra-neo4j
     environment:
       - NEO4J_AUTH=neo4j/${{NEO4J_PASSWORD:-cwa_dev_2026}}
       - NEO4J_PLUGINS=["apoc"]
@@ -1124,7 +1124,7 @@ services:
   # ===========================================
   qdrant:
     image: qdrant/qdrant:v1.13.2
-    container_name: {name}-qdrant
+    container_name: {name}_cwainfra-qdrant
     ports:
       - "${{QDRANT_HTTP_PORT:-6333}}:6333"
       - "${{QDRANT_GRPC_PORT:-6334}}:6334"
@@ -1145,7 +1145,7 @@ services:
   # ===========================================
   ollama:
     image: ollama/ollama:0.5.4
-    container_name: {name}-ollama
+    container_name: {name}_cwainfra-ollama
     ports:
       - "${{OLLAMA_PORT:-11434}}:11434"
     volumes:

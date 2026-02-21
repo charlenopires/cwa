@@ -1,10 +1,12 @@
+name: cwa_cwainfra
+
 services:
   # ===========================================
   # REDIS STACK - Primary Data Store
   # ===========================================
   redis:
     image: redis/redis-stack:latest
-    container_name: cwa-redis
+    container_name: cwa_cwainfra-redis
     ports:
       - "${REDIS_PORT:-6379}:6379"
       - "${REDIS_INSIGHT_PORT:-8001}:8001"
@@ -26,7 +28,7 @@ services:
   # ===========================================
   neo4j:
     image: neo4j:5.26-community
-    container_name: cwa-neo4j
+    container_name: cwa_cwainfra-neo4j
     ports:
       - "${NEO4J_HTTP_PORT:-7474}:7474"
       - "${NEO4J_BOLT_PORT:-7687}:7687"
@@ -55,7 +57,7 @@ services:
   # ===========================================
   qdrant:
     image: qdrant/qdrant:v1.13.2
-    container_name: cwa-qdrant
+    container_name: cwa_cwainfra-qdrant
     ports:
       - "${QDRANT_HTTP_PORT:-6333}:6333"
       - "${QDRANT_GRPC_PORT:-6334}:6334"
@@ -78,7 +80,7 @@ services:
   # ===========================================
   ollama:
     image: ollama/ollama:0.5.4
-    container_name: cwa-ollama
+    container_name: cwa_cwainfra-ollama
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
     volumes:
